@@ -1,0 +1,61 @@
+listenAddress: localhost:8080
+
+paths:
+  - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
+    backend:
+      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/76870487970000
+    filter: |
+      {
+        aardCultuurBebouwd: .aardCultuurBebouwd,
+        adressen: .adressen,
+        begrenzingPerceel: .begrenzingPerceel,
+        identificatie: .identificatie,
+        kadastraleAanduiding: .kadastraleAanduiding,
+        kadastraleGrootte: .kadastraleGrootte,
+        perceelnummerRotatie: .perceelnummerRotatie,
+        perceelnummerVerschuiving: .perceelnummerVerschuiving,
+        plaatscoordinaten: .plaatscoordinaten,
+        toelichtingBewaarder: .toelichtingBewaarder,
+        type: .type,
+        zakelijkGerechtigdeIdentificaties: .zakelijkGerechtigdeIdentificaties
+      }
+  - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
+    backend:
+      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/76870487970000/zakelijkgerechtigden
+    filter: |
+      {
+        "_embedded": {
+          "zakelijkGerechtigden": [
+            ._embedded.zakelijkGerechtigden[] |
+              {
+                "aanvangsdatum": .aanvangsdatum,
+                "type": .type,
+                "persoon": .persoon | {
+                  "omschrijving": .omschrijving,
+                  "type": .type
+                },
+                "tenaamstelling": .tenaamstelling | {
+                  "aandeel": .aandeel,
+                  "isGebaseerdOpStukdeelIdentificaties": .isGebaseerdOpStukdeelIdentificaties,
+                  "stukIdentificaties": .stukIdentificaties,
+                  "betrokkenGorzenEnAanwassen": .betrokkenGorzenEnAanwassen | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                  },
+                  "betrokkenPartner": .betrokkenPartner | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                  },
+                  "betrokkenSamenwerkingsverband": .betrokkenSamenwerkingsverband | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                  },
+                  "burgerlijkeStaatTenTijdeVanVerkrijging": .burgerlijkeStaatTenTijdeVanVerkrijging | {
+                    "code": .code,
+                    "waarde": .waarde
+                  }
+                },
+              }
+          ]
+        }
+      }
