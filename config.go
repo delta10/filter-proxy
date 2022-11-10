@@ -7,8 +7,7 @@ import (
 )
 
 type Backend struct {
-	URL     string            `yaml:"url"`
-	Headers map[string]string `yaml:"headers"`
+	URL string `yaml:"url"`
 }
 
 type Path struct {
