@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,10 +12,12 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/itchyny/gojq"
+
+	"github.com/delta10/filter-proxy/internal/config"
 )
 
 func main() {
-	config, err := NewConfig("config.yaml")
+	config, err := config.NewConfig("config.yaml")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -45,6 +48,13 @@ func main() {
 				log.Fatal("ServeHTTP:", err)
 			}
 			defer proxyResp.Body.Close()
+
+			if proxyResp.StatusCode != http.StatusOK {
+				copyHeader(w.Header(), proxyResp.Header)
+				w.WriteHeader(proxyResp.StatusCode)
+				io.Copy(w, proxyResp.Body)
+				return
+			}
 
 			body, _ := ioutil.ReadAll(proxyResp.Body)
 
@@ -97,4 +107,12 @@ func main() {
 	}
 
 	log.Fatal(s.ListenAndServe())
+}
+
+func copyHeader(dst, src http.Header) {
+	for k, vv := range src {
+		for _, v := range vv {
+			dst.Add(k, v)
+		}
+	}
 }
