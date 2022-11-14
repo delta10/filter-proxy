@@ -10,14 +10,20 @@ type Backend struct {
 	URL string `yaml:"url"`
 }
 
+type Authorization struct {
+	Groups []string `yaml:"groups"`
+}
+
 type Path struct {
-	Path    string  `yaml:"path"`
-	Backend Backend `yaml:"backend"`
-	Filter  string  `yaml:"filter"`
+	Path          string        `yaml:"path"`
+	Backend       Backend       `yaml:"backend"`
+	Filter        string        `yaml:"filter"`
+	Authorization Authorization `yaml:"authorization"`
 }
 
 type Config struct {
 	ListenAddress string `yaml:"listenAddress"`
+	JwksUrl       string `yaml:"jwksUrl"`
 	Paths         []Path `yaml:"paths"`
 }
 

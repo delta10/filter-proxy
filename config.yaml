@@ -1,9 +1,14 @@
 listenAddress: localhost:8080
 
+jwksUrl: http://localhost:8081/realms/master/protocol/openid-connect/certs
+
 paths:
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
     backend:
-      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/76870487970000
+      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
+    authorization:
+      groups:
+        - /BRK Bevragen
     filter: |
       {
         aardCultuurBebouwd: .aardCultuurBebouwd,
@@ -21,7 +26,7 @@ paths:
       }
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     backend:
-      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/76870487970000/zakelijkgerechtigden
+      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     filter: |
       {
         "_embedded": {
@@ -59,3 +64,6 @@ paths:
           ]
         }
       }
+    authorization:
+      groups:
+        - /BRK Bevragen
