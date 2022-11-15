@@ -27,6 +27,8 @@ paths:
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     backend:
       url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
+      tlsCertificate: tls.crt
+      tlsKey: tls.key
     filter: |
       {
         "_embedded": {

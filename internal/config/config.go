@@ -7,7 +7,9 @@ import (
 )
 
 type Backend struct {
-	URL string `yaml:"url"`
+	URL            string `yaml:"url"`
+	TLSCertificate string `yaml:"tlsCertificate"`
+	TLSKey         string `yaml:"tlsKey"`
 }
 
 type Authorization struct {

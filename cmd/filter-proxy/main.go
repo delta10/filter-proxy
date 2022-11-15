@@ -1,8 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -36,9 +36,8 @@ func main() {
 	for _, path := range config.Paths {
 		currentPath := path
 		router.HandleFunc(currentPath.Path, func(w http.ResponseWriter, r *http.Request) {
-			authorized, err := authorizeRequest(config.JwksUrl, currentPath.Authorization.Groups, r)
+			authorized := authorizeRequest(config.JwksUrl, currentPath.Authorization.Groups, w, r)
 			if !authorized {
-				writeError(w, http.StatusUnauthorized, fmt.Sprintf("could not authorize request: %s", err.Error()))
 				return
 			}
 
@@ -62,8 +61,22 @@ func main() {
 				},
 			}
 
+			tlsConfig := &tls.Config{}
+			if path.Backend.TLSCertificate != "" && path.Backend.TLSKey != "" {
+				cert, err := tls.LoadX509KeyPair(path.Backend.TLSCertificate, path.Backend.TLSKey)
+				if err != nil {
+					log.Fatalln(err)
+				}
+
+				tlsConfig = &tls.Config{
+					Certificates: []tls.Certificate{cert},
+				}
+			}
+
+			transport := &http.Transport{TLSClientConfig: tlsConfig}
 			client := &http.Client{
-				Timeout: 5 * time.Second,
+				Timeout:   5 * time.Second,
+				Transport: transport,
 			}
 
 			proxyResp, err := client.Do(request)
@@ -133,42 +146,48 @@ func main() {
 	log.Fatal(s.ListenAndServe())
 }
 
-func authorizeRequest(jwksUrl string, authorizedGroups []string, r *http.Request) (bool, error) {
+func authorizeRequest(jwksUrl string, authorizedGroups []string, w http.ResponseWriter, r *http.Request) bool {
 	// Create the JWKS from the resource at the given URL.
 	jwks, err := keyfunc.Get(jwksUrl, keyfunc.Options{})
 	if err != nil {
-		return false, err
+		writeError(w, http.StatusUnauthorized, fmt.Sprintf("could not authorize request: %s", err.Error()))
+		return false
 	}
 
 	tokenFromRequest := helper.DefaultBearerTokenFromRequest(r)
 	if tokenFromRequest == "" {
-		return false, errors.New("could not fetch bearer token from request")
+		writeError(w, http.StatusUnauthorized, "could not fetch token from request")
+		return false
 	}
 
 	parsedToken, err := jwt.ParseWithClaims(tokenFromRequest, &ClaimsWithGroups{}, jwks.Keyfunc)
 	if err != nil {
-		return false, err
+		writeError(w, http.StatusUnauthorized, fmt.Sprintf("could not authorize request: %s", err.Error()))
+		return false
 	}
 
 	if _, ok := parsedToken.Method.(*jwt.SigningMethodRSA); !ok {
-		return false, fmt.Errorf("unexpected signing method: %v", parsedToken.Header["alg"])
+		writeError(w, http.StatusUnauthorized, fmt.Sprintf("unexpected signing method: %v", parsedToken.Header["alg"]))
+		return false
 	}
 
 	if !parsedToken.Valid {
-		return false, errors.New("parsed token is not valid")
+		writeError(w, http.StatusUnauthorized, "parsed token is not valid")
+		return false
 	}
 
 	if userClaims, ok := parsedToken.Claims.(*ClaimsWithGroups); ok {
 		for _, authorizedGroup := range authorizedGroups {
 			for _, userGroup := range userClaims.Groups {
 				if authorizedGroup == userGroup {
-					return true, nil
+					return true
 				}
 			}
 		}
 	}
 
-	return false, errors.New("user is not in required groups")
+	writeError(w, http.StatusForbidden, "user is not in required groups")
+	return false
 }
 
 func writeError(w http.ResponseWriter, statusCode int, message string) {
