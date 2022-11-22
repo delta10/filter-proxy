@@ -45,14 +45,12 @@ func main() {
 
 			requestUrl, err := routeRegexp.URL(mux.Vars(r))
 			if err != nil {
-				log.Println(err)
 				writeError(w, http.StatusBadRequest, "could not parse request URL")
 				return
 			}
 
 			backendURL, err := url.Parse(requestUrl)
 			if err != nil {
-				log.Println(err)
 				writeError(w, http.StatusInternalServerError, "could not parse backend URL")
 				return
 			}
@@ -72,7 +70,6 @@ func main() {
 			if path.Backend.TLSCertificate != "" && path.Backend.TLSKey != "" {
 				cert, err := tls.LoadX509KeyPair(path.Backend.TLSCertificate, path.Backend.TLSKey)
 				if err != nil {
-					log.Println(err)
 					writeError(w, http.StatusInternalServerError, "could not load TLS keypair for backend")
 					return
 				}
@@ -90,7 +87,6 @@ func main() {
 
 			proxyResp, err := client.Do(request)
 			if err != nil {
-				log.Println("ServeHTTP:", err)
 				writeError(w, http.StatusInternalServerError, "could not fetch backend response")
 				return
 			}
@@ -111,7 +107,6 @@ func main() {
 			if currentPath.Filter == "" {
 				response, err := json.MarshalIndent(result, "", "    ")
 				if err != nil {
-					log.Println(err)
 					writeError(w, http.StatusInternalServerError, "could not marshall json")
 					return
 				}
@@ -123,7 +118,6 @@ func main() {
 
 			query, err := gojq.Parse(currentPath.Filter)
 			if err != nil {
-				log.Println(err)
 				writeError(w, http.StatusInternalServerError, "could not parse filter")
 				return
 			}
@@ -134,13 +128,15 @@ func main() {
 				if !ok {
 					break
 				}
-				if err, ok := v.(error); ok {
-					log.Println(err)
+
+				if _, ok := v.(error); ok {
+					continue
 				}
 
 				response, err := json.MarshalIndent(v, "", "    ")
 				if err != nil {
-					log.Println(err)
+					writeError(w, http.StatusInternalServerError, "could not marshal json")
+					return
 				}
 
 				w.Header().Set("Content-Type", "application/json")
