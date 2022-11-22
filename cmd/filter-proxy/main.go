@@ -45,13 +45,20 @@ func main() {
 
 			requestUrl, err := routeRegexp.URL(mux.Vars(r))
 			if err != nil {
-				log.Fatalln(err)
+				log.Println(err)
+				writeError(w, http.StatusBadRequest, "could not parse request URL")
+				return
 			}
 
 			backendURL, err := url.Parse(requestUrl)
 			if err != nil {
-				log.Fatalln(err)
+				log.Println(err)
+				writeError(w, http.StatusInternalServerError, "could not parse backend URL")
+				return
 			}
+
+			// Copy query parameters to backend
+			backendURL.RawQuery = r.URL.Query().Encode()
 
 			request := &http.Request{
 				Method: "GET",
@@ -65,7 +72,9 @@ func main() {
 			if path.Backend.TLSCertificate != "" && path.Backend.TLSKey != "" {
 				cert, err := tls.LoadX509KeyPair(path.Backend.TLSCertificate, path.Backend.TLSKey)
 				if err != nil {
-					log.Fatalln(err)
+					log.Println(err)
+					writeError(w, http.StatusInternalServerError, "could not load TLS keypair for backend")
+					return
 				}
 
 				tlsConfig = &tls.Config{
@@ -81,8 +90,9 @@ func main() {
 
 			proxyResp, err := client.Do(request)
 			if err != nil {
-				http.Error(w, "Server Error", http.StatusInternalServerError)
-				log.Fatal("ServeHTTP:", err)
+				log.Println("ServeHTTP:", err)
+				writeError(w, http.StatusInternalServerError, "could not fetch backend response")
+				return
 			}
 			defer proxyResp.Body.Close()
 
@@ -101,7 +111,9 @@ func main() {
 			if currentPath.Filter == "" {
 				response, err := json.MarshalIndent(result, "", "    ")
 				if err != nil {
-					log.Fatalln(err)
+					log.Println(err)
+					writeError(w, http.StatusInternalServerError, "could not marshall json")
+					return
 				}
 
 				w.Header().Set("Content-Type", "application/json")
@@ -111,7 +123,9 @@ func main() {
 
 			query, err := gojq.Parse(currentPath.Filter)
 			if err != nil {
-				log.Fatalln(err)
+				log.Println(err)
+				writeError(w, http.StatusInternalServerError, "could not parse filter")
+				return
 			}
 
 			iter := query.Run(result)
@@ -121,12 +135,12 @@ func main() {
 					break
 				}
 				if err, ok := v.(error); ok {
-					log.Fatalln(err)
+					log.Println(err)
 				}
 
 				response, err := json.MarshalIndent(v, "", "    ")
 				if err != nil {
-					log.Fatalln(err)
+					log.Println(err)
 				}
 
 				w.Header().Set("Content-Type", "application/json")

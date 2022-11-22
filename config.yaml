@@ -1,6 +1,6 @@
 listenAddress: localhost:8080
 
-jwksUrl: http://localhost:8081/realms/master/protocol/openid-connect/certs
+jwksUrl: http://localhost:8081/realms/datalab/protocol/openid-connect/certs
 
 paths:
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
@@ -27,8 +27,6 @@ paths:
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     backend:
       url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
-      tlsCertificate: tls.crt
-      tlsKey: tls.key
     filter: |
       {
         "_embedded": {
@@ -62,6 +60,33 @@ paths:
                     "waarde": .waarde
                   }
                 },
+              }
+          ]
+        }
+      }
+    authorization:
+      groups:
+        - /BRK Bevragen
+  - path: /api/brk/v1/publiekrechtelijkebeperkingen
+    backend:
+      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/publiekrechtelijkebeperkingen
+    filter: |
+      {
+        "_embedded": {
+          "publiekrechtelijkeBeperkingen": [
+            ._embedded.publiekrechtelijkeBeperkingen[] |
+              {
+                "identificatie": .identificatie,
+                "domein": .domein,
+                "grondslag": .grondslag,
+                "datumInWerking": .datumInWerking,
+                "datumBeeindiging": .datumBeeindiging,
+                "bevoegdGezag": .bevoegdGezag | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                },
+                "stukIdentificaties": .stukIdentificaties,
+                "isGebaseerdOpStukdeelIdentificatie": .isGebaseerdOpStukdeelIdentificatie
               }
           ]
         }
