@@ -3,7 +3,7 @@ module github.com/delta10/filter-proxy
 go 1.19
 
 require (
-	github.com/MicahParks/keyfunc v1.5.3
+	github.com/MicahParks/keyfunc v1.9.0
 	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/gorilla/mux v1.8.0
 	github.com/itchyny/gojq v0.12.11
