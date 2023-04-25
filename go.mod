@@ -6,7 +6,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/mux v1.8.0
-	github.com/itchyny/gojq v0.12.11
+	github.com/itchyny/gojq v0.12.12
 	github.com/ory/oathkeeper v0.40.1
 	gopkg.in/yaml.v2 v2.4.0
 )
