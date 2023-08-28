@@ -6,7 +6,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/mux v1.8.0
-	github.com/itchyny/gojq v0.12.12
+	github.com/itchyny/gojq v0.12.13
 	github.com/ory/oathkeeper v0.40.3
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -33,7 +33,7 @@ require (
 	github.com/subosito/gotenv v1.4.2 // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/tools v0.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20221227171554-f9683d7f8bef // indirect
