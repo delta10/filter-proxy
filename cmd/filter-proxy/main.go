@@ -3,27 +3,24 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
-	"github.com/MicahParks/keyfunc"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/mux"
 	"github.com/itchyny/gojq"
-	"github.com/ory/oathkeeper/helper"
 
 	"github.com/delta10/filter-proxy/internal/config"
 	"github.com/delta10/filter-proxy/internal/route"
+	"github.com/delta10/filter-proxy/internal/utils"
 )
 
 type ClaimsWithGroups struct {
-	Groups []string
-	jwt.StandardClaims
+	jwt.RegisteredClaims
+	Groups []string `json:"groups"`
 }
 
 func main() {
@@ -33,42 +30,50 @@ func main() {
 	}
 
 	router := mux.NewRouter()
-	for _, path := range config.Paths {
-		currentPath := path
-		router.HandleFunc(currentPath.Path, func(w http.ResponseWriter, r *http.Request) {
-			authorized := authorizeRequest(config.JwksUrl, currentPath.Authorization.Groups, w, r)
-			if !authorized {
+	for _, configuredPath := range config.Paths {
+		path := configuredPath
+		router.HandleFunc(path.Path, func(w http.ResponseWriter, r *http.Request) {
+			backend, ok := config.Backends[path.Backend.Slug]
+			if !ok {
+				writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
 				return
 			}
 
-			routeRegexp, _ := route.NewRouteRegexp(currentPath.Backend.URL, route.RegexpTypePath, route.RouteRegexpOptions{})
+			utils.DelHopHeaders(r.Header)
 
-			requestUrl, err := routeRegexp.URL(mux.Vars(r))
+			if !authorizeRequestWithService(config, path, r) {
+				writeError(w, http.StatusUnauthorized, "unauthorized request")
+				return
+			}
+
+			routeRegexp, _ := route.NewRouteRegexp(path.Backend.Path, route.RegexpTypePath, route.RouteRegexpOptions{})
+
+			parsedRequestPath, err := routeRegexp.URL(mux.Vars(r))
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "could not parse request URL")
 				return
 			}
 
-			backendURL, err := url.Parse(requestUrl)
+			backendBaseUrl, err := url.Parse(backend.BaseURL)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "could not parse backend URL")
 				return
 			}
 
-			// Copy query parameters to backend
-			backendURL.RawQuery = r.URL.Query().Encode()
+			fullBackendURL := backendBaseUrl.JoinPath(parsedRequestPath)
 
-			request := &http.Request{
-				Method: "GET",
-				URL:    backendURL,
-				Header: map[string][]string{
-					"X-Api-Key": {os.Getenv("API_KEY")},
-				},
+			// Copy query parameters to backend
+			fullBackendURL.RawQuery = r.URL.Query().Encode()
+
+			request, err := http.NewRequest("GET", fullBackendURL.String(), nil)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "could not construct backend request")
+				return
 			}
 
 			tlsConfig := &tls.Config{}
-			if path.Backend.TLSCertificate != "" && path.Backend.TLSKey != "" {
-				cert, err := tls.LoadX509KeyPair(path.Backend.TLSCertificate, path.Backend.TLSKey)
+			if backend.Auth.TLS.Certificate != "" && backend.Auth.TLS.Key != "" {
+				cert, err := tls.LoadX509KeyPair(backend.Auth.TLS.Certificate, backend.Auth.TLS.Key)
 				if err != nil {
 					writeError(w, http.StatusInternalServerError, "could not load TLS keypair for backend")
 					return
@@ -80,8 +85,18 @@ func main() {
 			}
 
 			transport := &http.Transport{TLSClientConfig: tlsConfig}
+
+			if backend.Auth.Basic.Username != "" && backend.Auth.Basic.Password != "" {
+				request.SetBasicAuth(backend.Auth.Basic.Username, backend.Auth.Basic.Password)
+			}
+
+			for headerKey, headerValue := range backend.Auth.Header {
+				parsedHeaderValue := utils.EnvSubst(headerValue)
+				request.Header.Set(headerKey, parsedHeaderValue)
+			}
+
 			client := &http.Client{
-				Timeout:   5 * time.Second,
+				Timeout:   25 * time.Second,
 				Transport: transport,
 			}
 
@@ -90,57 +105,46 @@ func main() {
 				writeError(w, http.StatusInternalServerError, "could not fetch backend response")
 				return
 			}
+
 			defer proxyResp.Body.Close()
 
-			if proxyResp.StatusCode != http.StatusOK {
-				copyHeader(w.Header(), proxyResp.Header)
+			if path.Filter != "" {
+				body, _ := io.ReadAll(proxyResp.Body)
+
+				var result map[string]interface{}
+				json.Unmarshal(body, &result)
+
+				query, err := gojq.Parse(path.Filter)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not parse filter")
+					return
+				}
+
+				iter := query.Run(result)
+				for {
+					v, ok := iter.Next()
+					if !ok {
+						break
+					}
+
+					if _, ok := v.(error); ok {
+						continue
+					}
+
+					response, err := json.MarshalIndent(v, "", "    ")
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not marshal json")
+						return
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+					w.Write(response)
+				}
+			} else {
+				utils.DelHopHeaders(proxyResp.Header)
+				utils.CopyHeader(w.Header(), proxyResp.Header)
 				w.WriteHeader(proxyResp.StatusCode)
 				io.Copy(w, proxyResp.Body)
-				return
-			}
-
-			body, _ := io.ReadAll(proxyResp.Body)
-
-			var result map[string]interface{}
-			json.Unmarshal(body, &result)
-
-			if currentPath.Filter == "" {
-				response, err := json.MarshalIndent(result, "", "    ")
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not marshall json")
-					return
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(response)
-				return
-			}
-
-			query, err := gojq.Parse(currentPath.Filter)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "could not parse filter")
-				return
-			}
-
-			iter := query.Run(result)
-			for {
-				v, ok := iter.Next()
-				if !ok {
-					break
-				}
-
-				if _, ok := v.(error); ok {
-					continue
-				}
-
-				response, err := json.MarshalIndent(v, "", "    ")
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not marshal json")
-					return
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(response)
 			}
 		})
 	}
@@ -156,48 +160,44 @@ func main() {
 	log.Fatal(s.ListenAndServe())
 }
 
-func authorizeRequest(jwksUrl string, authorizedGroups []string, w http.ResponseWriter, r *http.Request) bool {
-	// Create the JWKS from the resource at the given URL.
-	jwks, err := keyfunc.Get(jwksUrl, keyfunc.Options{})
+func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) bool {
+	if config.AuthorizationServiceURL == "" {
+		log.Print("returned unauthenticated as there is no authorization service URL configured.")
+		return false
+	}
+
+	authorizationServiceURL, err := url.Parse(config.AuthorizationServiceURL)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, fmt.Sprintf("could not authorize request: %s", err.Error()))
+		log.Printf("could not parse authorization url: %s", err)
 		return false
 	}
 
-	tokenFromRequest := helper.DefaultBearerTokenFromRequest(r)
-	if tokenFromRequest == "" {
-		writeError(w, http.StatusUnauthorized, "could not fetch token from request")
-		return false
+	authorizationServiceURL.RawQuery = r.URL.RawQuery
+
+	authorizationHeaders := r.Header
+
+	authorizationHeaders.Set("X-Source-Slug", path.Backend.Slug)
+	authorizationHeaders.Set("X-Original-Uri", r.URL.RequestURI())
+
+	request := &http.Request{
+		Method: "GET",
+		URL:    authorizationServiceURL,
+		Header: authorizationHeaders,
 	}
 
-	parsedToken, err := jwt.ParseWithClaims(tokenFromRequest, &ClaimsWithGroups{}, jwks.Keyfunc)
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Do(request)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, fmt.Sprintf("could not authorize request: %s", err.Error()))
+		log.Printf("could not fetch authorization response: %s", err)
 		return false
 	}
 
-	if _, ok := parsedToken.Method.(*jwt.SigningMethodRSA); !ok {
-		writeError(w, http.StatusUnauthorized, fmt.Sprintf("unexpected signing method: %v", parsedToken.Header["alg"]))
-		return false
-	}
+	defer resp.Body.Close()
 
-	if !parsedToken.Valid {
-		writeError(w, http.StatusUnauthorized, "parsed token is not valid")
-		return false
-	}
-
-	if userClaims, ok := parsedToken.Claims.(*ClaimsWithGroups); ok {
-		for _, authorizedGroup := range authorizedGroups {
-			for _, userGroup := range userClaims.Groups {
-				if authorizedGroup == userGroup {
-					return true
-				}
-			}
-		}
-	}
-
-	writeError(w, http.StatusForbidden, "user is not in required groups")
-	return false
+	return resp.StatusCode == http.StatusOK
 }
 
 func writeError(w http.ResponseWriter, statusCode int, message string) {
@@ -211,12 +211,4 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonResp)
-}
-
-func copyHeader(dst, src http.Header) {
-	for k, vv := range src {
-		for _, v := range vv {
-			dst.Add(k, v)
-		}
-	}
 }

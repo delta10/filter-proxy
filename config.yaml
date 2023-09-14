@@ -1,14 +1,19 @@
-listenAddress: localhost:8080
-
-jwksUrl: http://localhost:8081/realms/datalab/protocol/openid-connect/certs
+listenAddress: localhost:8050
+authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
 
 paths:
+  - path: /api/ows
+    backend:
+      slug: geoserver
+      path: /ows
+  - path: /api/wmts
+    backend:
+      slug: geoserver
+      path: /gwc/service/wmts
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
     backend:
-      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
-    authorization:
-      groups:
-        - /BRK Bevragen
+      slug: brk
+      path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
     filter: |
       {
         aardCultuurBebouwd: .aardCultuurBebouwd,
@@ -26,7 +31,8 @@ paths:
       }
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     backend:
-      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
+      slug: brk
+      path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     filter: |
       {
         "_embedded": {
@@ -64,12 +70,10 @@ paths:
           ]
         }
       }
-    authorization:
-      groups:
-        - /BRK Bevragen
   - path: /api/brk/v1/publiekrechtelijkebeperkingen
     backend:
-      url: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1/publiekrechtelijkebeperkingen
+      slug: brk
+      path: /publiekrechtelijkebeperkingen
     filter: |
       {
         "_embedded": {
@@ -91,6 +95,16 @@ paths:
           ]
         }
       }
-    authorization:
-      groups:
-        - /BRK Bevragen
+
+backends:
+  geoserver:
+    baseUrl: http://localhost:8051/geoserver
+    auth:
+      basic:
+        username: user
+        spassword: geoserver
+  brk:
+    baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1
+    auth:
+      header:
+        X-Api-Key: ${API_KEY}

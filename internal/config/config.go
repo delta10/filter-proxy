@@ -7,26 +7,36 @@ import (
 )
 
 type Backend struct {
-	URL            string `yaml:"url"`
-	TLSCertificate string `yaml:"tlsCertificate"`
-	TLSKey         string `yaml:"tlsKey"`
-}
+	BaseURL string `yaml:"baseUrl"`
 
-type Authorization struct {
-	Groups []string `yaml:"groups"`
+	Auth struct {
+		Header map[string]string `yaml:"header"`
+		Basic  struct {
+			Username string `yaml:"username"`
+			Password string `yaml:"password"`
+		} `yaml:"basic"`
+		TLS struct {
+			Certificate string `yaml:"certificate"`
+			Key         string `yaml:"key"`
+		} `yaml:"tls"`
+	}
 }
 
 type Path struct {
-	Path          string        `yaml:"path"`
-	Backend       Backend       `yaml:"backend"`
-	Filter        string        `yaml:"filter"`
-	Authorization Authorization `yaml:"authorization"`
+	Path    string `yaml:"path"`
+	Backend struct {
+		Slug string `yaml:"slug"`
+		Path string `yaml:"path"`
+	} `yaml:"backend"`
+	Filter string `yaml:"filter"`
 }
 
 type Config struct {
-	ListenAddress string `yaml:"listenAddress"`
-	JwksUrl       string `yaml:"jwksUrl"`
-	Paths         []Path `yaml:"paths"`
+	ListenAddress           string             `yaml:"listenAddress"`
+	AuthorizationServiceURL string             `yaml:"authorizationServiceUrl"`
+	JwksURL                 string             `yaml:"jwksUrl"`
+	Paths                   []Path             `yaml:"paths"`
+	Backends                map[string]Backend `yaml:"backends"`
 }
 
 // NewConfig returns a new decoded Config struct
