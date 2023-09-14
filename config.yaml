@@ -101,7 +101,7 @@ backends:
     baseUrl: http://localhost:8051/geoserver
     auth:
       basic:
-        username: user
+        username: admin
         password: geoserver
   brk:
     baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1
