@@ -102,7 +102,7 @@ backends:
     auth:
       basic:
         username: user
-        spassword: geoserver
+        password: geoserver
   brk:
     baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1
     auth:
