@@ -28,15 +28,21 @@ type Path struct {
 		Slug string `yaml:"slug"`
 		Path string `yaml:"path"`
 	} `yaml:"backend"`
-	Filter string `yaml:"filter"`
+	LogBackend string `yaml:"logBackend"`
+	Filter     string `yaml:"filter"`
+}
+
+type LogBackend struct {
+	BaseURL string `yaml:"baseUrl"`
 }
 
 type Config struct {
-	ListenAddress           string             `yaml:"listenAddress"`
-	AuthorizationServiceURL string             `yaml:"authorizationServiceUrl"`
-	JwksURL                 string             `yaml:"jwksUrl"`
-	Paths                   []Path             `yaml:"paths"`
-	Backends                map[string]Backend `yaml:"backends"`
+	ListenAddress           string                `yaml:"listenAddress"`
+	AuthorizationServiceURL string                `yaml:"authorizationServiceUrl"`
+	JwksURL                 string                `yaml:"jwksUrl"`
+	Paths                   []Path                `yaml:"paths"`
+	Backends                map[string]Backend    `yaml:"backends"`
+	LogBackends             map[string]LogBackend `yaml:"logBackends"`
 }
 
 // NewConfig returns a new decoded Config struct
