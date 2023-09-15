@@ -1,11 +1,19 @@
 version: "3.7"
 
 services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:20.0.1
-    environment:
-      - KEYCLOAK_ADMIN=admin
-      - KEYCLOAK_ADMIN_PASSWORD=password
-    command: "start-dev"
+  loki:
+    image: grafana/loki:2.9.1
     ports:
-      - 8081:8080
+      - 3100:3100
+    volumes:
+      - loki-data:/loki
+  grafana:
+    image: grafana/grafana:10.1.1
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  grafana-data:
+  loki-data:

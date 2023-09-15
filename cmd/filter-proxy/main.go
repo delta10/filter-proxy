@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"github.com/itchyny/gojq"
 
 	"github.com/delta10/filter-proxy/internal/config"
+	"github.com/delta10/filter-proxy/internal/logs"
 	"github.com/delta10/filter-proxy/internal/route"
 	"github.com/delta10/filter-proxy/internal/utils"
 )
@@ -21,6 +24,14 @@ import (
 type ClaimsWithGroups struct {
 	jwt.RegisteredClaims
 	Groups []string `json:"groups"`
+}
+
+type AuthorizationResponse struct {
+	User struct {
+		Id       int64
+		Username string
+		Name     string
+	}
 }
 
 func main() {
@@ -41,7 +52,8 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			if !authorizeRequestWithService(config, path, r) {
+			authorizationResponse, ok := authorizeRequestWithService(config, path, r)
+			if !ok {
 				writeError(w, http.StatusUnauthorized, "unauthorized request")
 				return
 			}
@@ -106,9 +118,39 @@ func main() {
 				return
 			}
 
+			if path.LogBackend != "" {
+				logBackendName, ok := config.LogBackends[path.LogBackend]
+				if !ok {
+					writeError(w, http.StatusInternalServerError, "could not find log backend: "+path.LogBackend)
+					return
+				}
+
+				logBackend := logs.NewLogBackend(logBackendName)
+
+				labels := map[string]string{
+					"system":  "filter-proxy",
+					"backend": path.Backend.Slug,
+				}
+
+				logLine := map[string]string{
+					"method":        r.Method,
+					"path":          r.URL.String(),
+					"status":        proxyResp.Status,
+					"user_id":       fmt.Sprint(authorizationResponse.User.Id),
+					"user_username": authorizationResponse.User.Username,
+					"ip":            utils.ReadUserIP(r),
+				}
+
+				err := logBackend.WriteLog(labels, logLine)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not write log to backend")
+					return
+				}
+			}
+
 			defer proxyResp.Body.Close()
 
-			if path.Filter != "" {
+			if path.Filter != "" && proxyResp.StatusCode == http.StatusOK {
 				body, _ := io.ReadAll(proxyResp.Body)
 
 				var result map[string]interface{}
@@ -160,16 +202,16 @@ func main() {
 	log.Fatal(s.ListenAndServe())
 }
 
-func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) bool {
+func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) (*AuthorizationResponse, bool) {
 	if config.AuthorizationServiceURL == "" {
 		log.Print("returned unauthenticated as there is no authorization service URL configured.")
-		return false
+		return nil, false
 	}
 
 	authorizationServiceURL, err := url.Parse(config.AuthorizationServiceURL)
 	if err != nil {
 		log.Printf("could not parse authorization url: %s", err)
-		return false
+		return nil, false
 	}
 
 	authorizationServiceURL.RawQuery = r.URL.RawQuery
@@ -192,12 +234,30 @@ func authorizeRequestWithService(config *config.Config, path config.Path, r *htt
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Printf("could not fetch authorization response: %s", err)
-		return false
+		return nil, false
 	}
 
 	defer resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("authorization response is not ok")
+		return nil, false
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("could not read authorization response: %s", err)
+		return nil, false
+	}
+
+	responseData := AuthorizationResponse{}
+	err = json.Unmarshal(body, &responseData)
+	if err != nil {
+		log.Printf("could not unmarshal authorization response: %s", err)
+		return nil, false
+	}
+
+	return &responseData, true
 }
 
 func writeError(w http.ResponseWriter, statusCode int, message string) {

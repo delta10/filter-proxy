@@ -3,6 +3,7 @@ authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
 
 paths:
   - path: /api/ows
+    logBackend: loki
     backend:
       slug: geoserver
       path: /ows
@@ -14,6 +15,7 @@ paths:
     backend:
       slug: brk
       path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
+    logBackend: loki
     filter: |
       {
         aardCultuurBebouwd: .aardCultuurBebouwd,
@@ -33,6 +35,7 @@ paths:
     backend:
       slug: brk
       path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
+    logBackend: loki
     filter: |
       {
         "_embedded": {
@@ -74,6 +77,7 @@ paths:
     backend:
       slug: brk
       path: /publiekrechtelijkebeperkingen
+    logBackend: loki
     filter: |
       {
         "_embedded": {
@@ -108,3 +112,7 @@ backends:
     auth:
       header:
         X-Api-Key: ${API_KEY}
+
+logBackends:
+  loki:
+    baseUrl: http://localhost:3100/loki
