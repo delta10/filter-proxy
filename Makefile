@@ -1,8 +1,6 @@
 BINDIR      := $(CURDIR)/bin
-INSTALL_PATH ?= /usr/local/bin
 DIST_DIRS   := find * -type d -exec
 TARGETS     := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64
-TARGET_OBJS ?= darwin-amd64.tar.gz darwin-amd64.tar.gz.sha256 darwin-amd64.tar.gz.sha256sum darwin-arm64.tar.gz darwin-arm64.tar.gz.sha256 darwin-arm64.tar.gz.sha256sum linux-amd64.tar.gz linux-amd64.tar.gz.sha256 linux-amd64.tar.gz.sha256sum linux-arm64.tar.gz linux-arm64.tar.gz.sha256 linux-arm64.tar.gz.sha256sum windows-amd64.zip windows-amd64.zip.sha256 windows-amd64.zip.sha256sum
 BINNAME     ?= filter-proxy
 
 GOBIN         = $(shell go env GOBIN)
@@ -30,11 +28,6 @@ GIT_COMMIT = $(shell git rev-parse HEAD)
 GIT_SHA    = $(shell git rev-parse --short HEAD)
 GIT_TAG    = $(shell git describe --tags --abbrev=0 --exact-match 2>/dev/null)
 GIT_DIRTY  = $(shell test -n "`git status --porcelain`" && echo "dirty" || echo "clean")
-
-ifdef VERSION
-	BINARY_VERSION = $(VERSION)
-endif
-BINARY_VERSION ?= ${GIT_TAG}
 
 .PHONY: all
 all: build
