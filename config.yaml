@@ -11,12 +11,32 @@ paths:
     backend:
       slug: geoserver
       path: /gwc/service/wmts
+  - path: /api/brp/v1/personen
+    allowedMethods:
+      - POST
+    backend:
+      slug: brp
+      path: /personen
+    requestRewrite: |
+      (
+        if .geslachtsnaam and .geslachtsnaam != "" then {
+          type: "ZoekMetGeslachtsnaamEnGeboortedatum",
+          geslachtsnaam: .geslachtsnaam,
+          geboortedatum: .geboortedatum,
+          fields: ["burgerservicenummer","geboorte", "geslacht", "naam", "adressering"]
+        } else {
+          type: "RaadpleegMetBurgerservicenummer",
+          burgerservicenummer: [ .burgerservicenummer ],
+          fields: ["burgerservicenummer","geboorte", "geslacht", "naam", "adressering"]
+        }
+        end
+      )
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
     backend:
       slug: brk
       path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
     logBackend: loki
-    filter: |
+    responseRewrite: |
       {
         aardCultuurBebouwd: .aardCultuurBebouwd,
         adressen: .adressen,
@@ -36,7 +56,7 @@ paths:
       slug: brk
       path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
     logBackend: loki
-    filter: |
+    responseRewrite: |
       {
         "_embedded": {
           "zakelijkGerechtigden": [
@@ -78,7 +98,7 @@ paths:
       slug: brk
       path: /publiekrechtelijkebeperkingen
     logBackend: loki
-    filter: |
+    responseRewrite: |
       {
         "_embedded": {
           "publiekrechtelijkeBeperkingen": [
@@ -111,7 +131,12 @@ backends:
     baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1
     auth:
       header:
-        X-Api-Key: ${API_KEY}
+        X-Api-Key: ${BRK_API_KEY}
+  brp:
+    baseUrl: https://proefomgeving.haalcentraal.nl/haalcentraal/api/brp
+    auth:
+      header:
+        X-API-KEY: ${BRP_API_KEY}
 
 logBackends:
   loki:

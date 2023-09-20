@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -58,6 +59,16 @@ func main() {
 				return
 			}
 
+			allowedMethods := path.AllowedMethods
+			if len(allowedMethods) == 0 {
+				allowedMethods = []string{"GET"}
+			}
+
+			if !utils.StringInSlice(r.Method, allowedMethods) {
+				writeError(w, http.StatusBadRequest, "request method is not allowed")
+				return
+			}
+
 			routeRegexp, _ := route.NewRouteRegexp(path.Backend.Path, route.RegexpTypePath, route.RouteRegexpOptions{})
 
 			parsedRequestPath, err := routeRegexp.URL(mux.Vars(r))
@@ -77,10 +88,46 @@ func main() {
 			// Copy query parameters to backend
 			fullBackendURL.RawQuery = r.URL.Query().Encode()
 
-			request, err := http.NewRequest("GET", fullBackendURL.String(), nil)
+			backendRequest, err := http.NewRequest(r.Method, fullBackendURL.String(), nil)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "could not construct backend request")
 				return
+			}
+
+			if path.RequestRewrite != "" {
+				body, _ := io.ReadAll(r.Body)
+
+				var result map[string]interface{}
+				json.Unmarshal(body, &result)
+
+				query, err := gojq.Parse(path.RequestRewrite)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not parse filter")
+					return
+				}
+
+				iter := query.Run(result)
+				for {
+					v, ok := iter.Next()
+					if !ok {
+						break
+					}
+
+					if _, ok := v.(error); ok {
+						continue
+					}
+
+					request, err := json.MarshalIndent(v, "", "    ")
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not marshal json")
+						return
+					}
+
+					backendRequest.Header.Set("Content-Type", "application/json")
+
+					buffer := bytes.NewBuffer(request)
+					backendRequest.Body = io.NopCloser(buffer)
+				}
 			}
 
 			tlsConfig := &tls.Config{}
@@ -99,12 +146,12 @@ func main() {
 			transport := &http.Transport{TLSClientConfig: tlsConfig}
 
 			if backend.Auth.Basic.Username != "" && backend.Auth.Basic.Password != "" {
-				request.SetBasicAuth(backend.Auth.Basic.Username, backend.Auth.Basic.Password)
+				backendRequest.SetBasicAuth(backend.Auth.Basic.Username, backend.Auth.Basic.Password)
 			}
 
 			for headerKey, headerValue := range backend.Auth.Header {
 				parsedHeaderValue := utils.EnvSubst(headerValue)
-				request.Header.Set(headerKey, parsedHeaderValue)
+				backendRequest.Header.Set(headerKey, parsedHeaderValue)
 			}
 
 			client := &http.Client{
@@ -112,7 +159,7 @@ func main() {
 				Transport: transport,
 			}
 
-			proxyResp, err := client.Do(request)
+			proxyResp, err := client.Do(backendRequest)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "could not fetch backend response")
 				return
@@ -150,13 +197,13 @@ func main() {
 
 			defer proxyResp.Body.Close()
 
-			if path.Filter != "" && proxyResp.StatusCode == http.StatusOK {
+			if path.ResponseRewrite != "" && proxyResp.StatusCode == http.StatusOK {
 				body, _ := io.ReadAll(proxyResp.Body)
 
 				var result map[string]interface{}
 				json.Unmarshal(body, &result)
 
-				query, err := gojq.Parse(path.Filter)
+				query, err := gojq.Parse(path.ResponseRewrite)
 				if err != nil {
 					writeError(w, http.StatusInternalServerError, "could not parse filter")
 					return
