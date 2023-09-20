@@ -23,13 +23,15 @@ type Backend struct {
 }
 
 type Path struct {
-	Path    string `yaml:"path"`
-	Backend struct {
+	Path           string   `yaml:"path"`
+	AllowedMethods []string `yaml:"allowedMethods"`
+	Backend        struct {
 		Slug string `yaml:"slug"`
 		Path string `yaml:"path"`
 	} `yaml:"backend"`
-	LogBackend string `yaml:"logBackend"`
-	Filter     string `yaml:"filter"`
+	LogBackend      string `yaml:"logBackend"`
+	RequestRewrite  string `yaml:"requestRewrite"`
+	ResponseRewrite string `yaml:"responseRewrite"`
 }
 
 type LogBackend struct {
