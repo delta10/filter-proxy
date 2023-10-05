@@ -146,7 +146,8 @@ func main() {
 			transport := &http.Transport{TLSClientConfig: tlsConfig}
 
 			if backend.Auth.Basic.Username != "" && backend.Auth.Basic.Password != "" {
-				backendRequest.SetBasicAuth(backend.Auth.Basic.Username, backend.Auth.Basic.Password)
+				parsedPassword := utils.EnvSubst(backend.Auth.Basic.Password)
+				backendRequest.SetBasicAuth(backend.Auth.Basic.Username, parsedPassword)
 			}
 
 			for headerKey, headerValue := range backend.Auth.Header {
