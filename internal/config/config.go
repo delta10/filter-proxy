@@ -16,8 +16,9 @@ type Backend struct {
 			Password string `yaml:"password"`
 		} `yaml:"basic"`
 		TLS struct {
-			Certificate string `yaml:"certificate"`
-			Key         string `yaml:"key"`
+			RootCertificates string `yaml:"rootCertificates"`
+			Certificate      string `yaml:"certificate"`
+			Key              string `yaml:"key"`
 		} `yaml:"tls"`
 	}
 }
