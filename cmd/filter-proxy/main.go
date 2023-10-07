@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -131,6 +132,23 @@ func main() {
 			}
 
 			tlsConfig := &tls.Config{}
+			if backend.Auth.TLS.RootCertificates != "" {
+				rootCertificates, err := ioutil.ReadFile(backend.Auth.TLS.RootCertificates)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not retrieve root certs for backend")
+					return
+				}
+
+				roots := x509.NewCertPool()
+				ok := roots.AppendCertsFromPEM(rootCertificates)
+				if !ok {
+					writeError(w, http.StatusInternalServerError, "could not load root certs for backend")
+					return
+				}
+
+				tlsConfig.RootCAs = roots
+			}
+
 			if backend.Auth.TLS.Certificate != "" && backend.Auth.TLS.Key != "" {
 				cert, err := tls.LoadX509KeyPair(backend.Auth.TLS.Certificate, backend.Auth.TLS.Key)
 				if err != nil {
@@ -138,9 +156,7 @@ func main() {
 					return
 				}
 
-				tlsConfig = &tls.Config{
-					Certificates: []tls.Certificate{cert},
-				}
+				tlsConfig.Certificates = []tls.Certificate{cert}
 			}
 
 			transport := &http.Transport{TLSClientConfig: tlsConfig}
@@ -162,7 +178,7 @@ func main() {
 
 			proxyResp, err := client.Do(backendRequest)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "could not fetch backend response")
+				writeError(w, http.StatusInternalServerError, fmt.Sprintf("could not fetch backend response: %s", err))
 				return
 			}
 
