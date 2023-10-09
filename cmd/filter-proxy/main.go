@@ -263,7 +263,11 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	log.Fatal(s.ListenAndServe())
+	if config.ListenTLS.Certificate != "" && config.ListenTLS.Key != "" {
+		log.Fatal(s.ListenAndServeTLS(config.ListenTLS.Certificate, config.ListenTLS.Key))
+	} else {
+		log.Fatal(s.ListenAndServe())
+	}
 }
 
 func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) (*AuthorizationResponse, bool) {
