@@ -39,7 +39,11 @@ type LogBackend struct {
 }
 
 type Config struct {
-	ListenAddress           string                `yaml:"listenAddress"`
+	ListenAddress string `yaml:"listenAddress"`
+	ListenTLS     struct {
+		Certificate string `yaml:"certificate"`
+		Key         string `yaml:"key"`
+	} `yaml:"listenTls"`
 	AuthorizationServiceURL string                `yaml:"authorizationServiceUrl"`
 	JwksURL                 string                `yaml:"jwksUrl"`
 	Paths                   []Path                `yaml:"paths"`
