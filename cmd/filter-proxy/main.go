@@ -54,9 +54,9 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			authorizationResponse, ok := authorizeRequestWithService(config, path, r)
-			if !ok {
-				writeError(w, http.StatusUnauthorized, "unauthorized request")
+			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, path, r)
+			if authorizationStatusCode != http.StatusOK {
+				writeError(w, authorizationStatusCode, "unauthorized request")
 				return
 			}
 
@@ -270,16 +270,16 @@ func main() {
 	}
 }
 
-func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) (*AuthorizationResponse, bool) {
+func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) (int, *AuthorizationResponse) {
 	if config.AuthorizationServiceURL == "" {
 		log.Print("returned unauthenticated as there is no authorization service URL configured.")
-		return nil, false
+		return http.StatusInternalServerError, nil
 	}
 
 	authorizationServiceURL, err := url.Parse(config.AuthorizationServiceURL)
 	if err != nil {
 		log.Printf("could not parse authorization url: %s", err)
-		return nil, false
+		return http.StatusInternalServerError, nil
 	}
 
 	authorizationServiceURL.RawQuery = r.URL.RawQuery
@@ -302,30 +302,25 @@ func authorizeRequestWithService(config *config.Config, path config.Path, r *htt
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Printf("could not fetch authorization response: %s", err)
-		return nil, false
+		return http.StatusInternalServerError, nil
 	}
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("authorization response is not ok")
-		return nil, false
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("could not read authorization response: %s", err)
-		return nil, false
+		return http.StatusInternalServerError, nil
 	}
 
 	responseData := AuthorizationResponse{}
 	err = json.Unmarshal(body, &responseData)
 	if err != nil {
 		log.Printf("could not unmarshal authorization response: %s", err)
-		return nil, false
+		return http.StatusInternalServerError, nil
 	}
 
-	return &responseData, true
+	return resp.StatusCode, &responseData
 }
 
 func writeError(w http.ResponseWriter, statusCode int, message string) {
