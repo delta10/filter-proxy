@@ -271,6 +271,10 @@ func main() {
 }
 
 func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) (int, *AuthorizationResponse) {
+	if path.AllowAlways {
+		return http.StatusOK, nil
+	}
+
 	if config.AuthorizationServiceURL == "" {
 		log.Print("returned unauthenticated as there is no authorization service URL configured.")
 		return http.StatusInternalServerError, nil
