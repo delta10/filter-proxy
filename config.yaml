@@ -127,22 +127,22 @@ paths:
 
 backends:
   geoserver:
-    baseUrl: http://localhost:8051/geoserver
-    auth:
-      basic:
-        username: admin
-        password: geoserver
+    type: OWS
+    baseUrl: https://dpt.purmerend.nl/geoserver
   haal-centraal-brp:
+    type: REST
     baseUrl: https://proefomgeving.haalcentraal.nl/haalcentraal/api/brp
     auth:
       header:
         X-API-KEY: ${BRP_API_KEY}
   haal-centraal-brk:
+    type: REST
     baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1
     auth:
       header:
         X-Api-Key: ${BRK_API_KEY}
   kvk:
+    type: REST
     baseUrl: https://api.kvk.nl/test/api/v1
     auth:
       tls:

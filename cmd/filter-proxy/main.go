@@ -53,7 +53,7 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			authorizationStatusCode, _ := authorizeRequestWithService(config, path, r)
+			authorizationStatusCode, _ := authorizeRequestWithService(config, backend, path, r)
 			if authorizationStatusCode != http.StatusOK {
 				writeError(w, authorizationStatusCode, "unauthorized request")
 				return
@@ -239,37 +239,86 @@ func main() {
 	}
 }
 
-func authorizeRequestWithService(config *config.Config, path config.Path, r *http.Request) (int, *AuthorizationResponse) {
+func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request) (int, *AuthorizationResponse) {
 	if path.AllowAlways {
 		return http.StatusOK, nil
 	}
 
 	if config.AuthorizationServiceURL == "" {
-		log.Print("returned unauthenticated as there is no authorization service URL configured.")
+		log.Print("returned unauthenticated as there is no authorization service URL configured")
 		return http.StatusInternalServerError, nil
 	}
 
-	authorizationServiceURL, err := url.Parse(config.AuthorizationServiceURL)
+	if utils.QueryParamsContainMultipleKeys(r.URL.Query()) {
+		log.Print("rejected request as query parameters contain multiple keys")
+		return http.StatusBadRequest, nil
+	}
+
+	authorizationBody := map[string]interface{}{
+		"source":     path.Backend.Slug,
+		"user_agent": r.Header.Get("User-Agent"),
+		"ip":         utils.ReadUserIP(r),
+	}
+
+	if backend.Type == "OWS" {
+		queryParams := utils.QueryParamsToLower(r.URL.Query())
+		authorizationBody["service"] = queryParams.Get("service")
+		authorizationBody["request"] = queryParams.Get("request")
+
+		if authorizationBody["service"] == "WMS" {
+			authorizationBody["resource"] = queryParams.Get("layers") + queryParams.Get("layer")
+			authorizationBody["params"] = map[string]interface{}{
+				"service":    queryParams.Get("service"),
+				"request":    queryParams.Get("request"),
+				"cql_filter": queryParams.Get("cql_filter"),
+			}
+		} else if authorizationBody["service"] == "WFS" {
+			authorizationBody["resource"] = queryParams.Get("typename") + queryParams.Get("typenames")
+			authorizationBody["params"] = map[string]interface{}{
+				"service":    queryParams.Get("service"),
+				"request":    queryParams.Get("request"),
+				"cql_filter": queryParams.Get("cql_filter"),
+			}
+		} else {
+			log.Printf("unauthorized service type: %s", authorizationBody["service"])
+			return http.StatusUnauthorized, nil
+		}
+	} else if backend.Type == "WMTS" {
+		queryParams := utils.QueryParamsToLower(r.URL.Query())
+		authorizationBody["resource"] = queryParams.Get("layer")
+		authorizationBody["params"] = map[string]interface{}{
+			"service": queryParams.Get("service"),
+			"request": queryParams.Get("request"),
+		}
+	} else if backend.Type == "REST" {
+		authorizationBody["resource"] = path.Backend.Path
+	} else if backend.Type != "" {
+		log.Printf("unsupported backend type configured: %s")
+		return http.StatusInternalServerError, nil
+	}
+
+	marshalledAuthorizationBody, err := json.Marshal(authorizationBody)
 	if err != nil {
-		log.Printf("could not parse authorization url: %s", err)
+		log.Print("could not marshall authorization body")
 		return http.StatusInternalServerError, nil
 	}
 
-	authorizationServiceURL.RawQuery = r.URL.RawQuery
+	request, err := http.NewRequest("GET", config.AuthorizationServiceURL, bytes.NewReader(marshalledAuthorizationBody))
+	if err != nil {
+		log.Print("could not construct authorization request")
+		return http.StatusInternalServerError, nil
+	}
 
-	authorizationHeaders := r.Header
+	if r.Header.Get("Cookie") != "" {
+		request.Header.Set("Cookie", r.Header.Get("Cookie"))
+	}
 
-	authorizationHeaders.Set("X-Source-Slug", path.Backend.Slug)
-	authorizationHeaders.Set("X-Original-Uri", r.URL.RequestURI())
-
-	request := &http.Request{
-		Method: "GET",
-		URL:    authorizationServiceURL,
-		Header: authorizationHeaders,
+	if r.Header.Get("Authorization") != "" {
+		request.Header.Set("Authorization", r.Header.Get("Authorization"))
 	}
 
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 	}
 
 	resp, err := client.Do(request)
@@ -280,7 +329,7 @@ func authorizeRequestWithService(config *config.Config, path config.Path, r *htt
 
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("could not read authorization response: %s", err)
 		return http.StatusInternalServerError, nil
@@ -291,6 +340,10 @@ func authorizeRequestWithService(config *config.Config, path config.Path, r *htt
 	if err != nil {
 		log.Printf("could not unmarshal authorization response: %s", err)
 		return http.StatusInternalServerError, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("received an authorization error: %v, %s", resp.StatusCode, body)
 	}
 
 	return resp.StatusCode, &responseData

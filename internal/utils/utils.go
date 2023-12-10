@@ -20,6 +20,21 @@ func QueryParamsToLower(queryParams url.Values) url.Values {
 	return lowercaseParams
 }
 
+func QueryParamsContainMultipleKeys(queryParams url.Values) bool {
+	params := map[string]bool{}
+
+	for key := range queryParams {
+		lowercaseKey := strings.ToLower(key)
+		if params[lowercaseKey] {
+			return true
+		}
+
+		params[lowercaseKey] = true
+	}
+
+	return false
+}
+
 func GenerateBasicAuthHeader(username, password string) string {
 	auth := username + ":" + password
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
