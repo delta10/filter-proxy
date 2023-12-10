@@ -31,13 +31,8 @@ type Path struct {
 		Slug string `yaml:"slug"`
 		Path string `yaml:"path"`
 	} `yaml:"backend"`
-	LogBackend      string `yaml:"logBackend"`
 	RequestRewrite  string `yaml:"requestRewrite"`
 	ResponseRewrite string `yaml:"responseRewrite"`
-}
-
-type LogBackend struct {
-	BaseURL string `yaml:"baseUrl"`
 }
 
 type Config struct {
@@ -46,11 +41,10 @@ type Config struct {
 		Certificate string `yaml:"certificate"`
 		Key         string `yaml:"key"`
 	} `yaml:"listenTls"`
-	AuthorizationServiceURL string                `yaml:"authorizationServiceUrl"`
-	JwksURL                 string                `yaml:"jwksUrl"`
-	Paths                   []Path                `yaml:"paths"`
-	Backends                map[string]Backend    `yaml:"backends"`
-	LogBackends             map[string]LogBackend `yaml:"logBackends"`
+	AuthorizationServiceURL string             `yaml:"authorizationServiceUrl"`
+	JwksURL                 string             `yaml:"jwksUrl"`
+	Paths                   []Path             `yaml:"paths"`
+	Backends                map[string]Backend `yaml:"backends"`
 }
 
 // NewConfig returns a new decoded Config struct

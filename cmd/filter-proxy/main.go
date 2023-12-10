@@ -18,7 +18,6 @@ import (
 	"github.com/itchyny/gojq"
 
 	"github.com/delta10/filter-proxy/internal/config"
-	"github.com/delta10/filter-proxy/internal/logs"
 	"github.com/delta10/filter-proxy/internal/route"
 	"github.com/delta10/filter-proxy/internal/utils"
 )
@@ -54,7 +53,7 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, path, r)
+			authorizationStatusCode, _ := authorizeRequestWithService(config, path, r)
 			if authorizationStatusCode != http.StatusOK {
 				writeError(w, authorizationStatusCode, "unauthorized request")
 				return
@@ -180,36 +179,6 @@ func main() {
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, fmt.Sprintf("could not fetch backend response: %s", err))
 				return
-			}
-
-			if path.LogBackend != "" {
-				logBackendName, ok := config.LogBackends[path.LogBackend]
-				if !ok {
-					writeError(w, http.StatusInternalServerError, "could not find log backend: "+path.LogBackend)
-					return
-				}
-
-				logBackend := logs.NewLogBackend(logBackendName)
-
-				labels := map[string]string{
-					"system":  "filter-proxy",
-					"backend": path.Backend.Slug,
-				}
-
-				logLine := map[string]string{
-					"method":        r.Method,
-					"path":          r.URL.String(),
-					"status":        proxyResp.Status,
-					"user_id":       fmt.Sprint(authorizationResponse.User.Id),
-					"user_username": authorizationResponse.User.Username,
-					"ip":            utils.ReadUserIP(r),
-				}
-
-				err := logBackend.WriteLog(labels, logLine)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not write log to backend")
-					return
-				}
 			}
 
 			defer proxyResp.Body.Close()

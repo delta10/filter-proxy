@@ -8,7 +8,6 @@ authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
 
 paths:
   - path: /api/ows
-    logBackend: loki
     backend:
       slug: geoserver
       path: /ows
@@ -40,7 +39,6 @@ paths:
     backend:
       slug: haal-centraal-brk
       path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
-    logBackend: loki
     responseRewrite: |
       {
         aardCultuurBebouwd: .aardCultuurBebouwd,
@@ -60,7 +58,6 @@ paths:
     backend:
       slug: haal-centraal-brk
       path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
-    logBackend: loki
     responseRewrite: |
       {
         "_embedded": {
@@ -102,7 +99,6 @@ paths:
     backend:
       slug: haal-centraal-brk
       path: /publiekrechtelijkebeperkingen
-    logBackend: loki
     responseRewrite: |
       {
         "_embedded": {
@@ -153,7 +149,3 @@ backends:
         rootCertificates: .vscode/pki-o-g1.crt
       header:
         apikey: ${KVK_API_KEY}
-
-logBackends:
-  loki:
-    baseUrl: http://localhost:3100/loki
