@@ -28,11 +28,8 @@ type ClaimsWithGroups struct {
 }
 
 type AuthorizationResponse struct {
-	User struct {
-		Id       int64
-		Username string
-		Name     string
-	}
+	Result         bool   `json:"result"`
+	ResponseFilter string `json:"response_filter"`
 }
 
 func main() {
@@ -53,9 +50,14 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			authorizationStatusCode, _ := authorizeRequestWithService(config, backend, path, r)
+			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r)
 			if authorizationStatusCode != http.StatusOK {
 				writeError(w, authorizationStatusCode, "unauthorized request")
+				return
+			}
+
+			if !authorizationResponse.Result {
+				writeError(w, http.StatusUnauthorized, "result field is not true")
 				return
 			}
 
@@ -183,13 +185,20 @@ func main() {
 
 			defer proxyResp.Body.Close()
 
-			if path.ResponseRewrite != "" && proxyResp.StatusCode == http.StatusOK {
+			if proxyResp.StatusCode == http.StatusOK && (path.ResponseRewrite != "" || authorizationResponse.ResponseFilter != "") {
 				body, _ := io.ReadAll(proxyResp.Body)
 
 				var result map[string]interface{}
 				json.Unmarshal(body, &result)
 
-				query, err := gojq.Parse(path.ResponseRewrite)
+				var responseRewrite = ""
+				if authorizationResponse.ResponseFilter != "" {
+					responseRewrite = authorizationResponse.ResponseFilter
+				} else {
+					responseRewrite = path.ResponseRewrite
+				}
+
+				query, err := gojq.Parse(responseRewrite)
 				if err != nil {
 					writeError(w, http.StatusInternalServerError, "could not parse filter")
 					return
