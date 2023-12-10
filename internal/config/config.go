@@ -7,6 +7,7 @@ import (
 )
 
 type Backend struct {
+	Type    string `yaml:"type"`
 	BaseURL string `yaml:"baseUrl"`
 
 	Auth struct {
