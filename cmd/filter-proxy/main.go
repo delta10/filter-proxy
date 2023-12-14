@@ -326,6 +326,8 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		request.Header.Set("Authorization", r.Header.Get("Authorization"))
 	}
 
+	request.Header.Set("X-Forwarded-For", utils.ReadUserIP(r))
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
