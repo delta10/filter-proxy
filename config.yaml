@@ -13,28 +13,17 @@ paths:
       path: /ows
   - path: /api/wmts
     backend:
-      slug: geoserver
+      slug: geoserver-wmts
       path: /gwc/service/wmts
   - path: /api/brp/v1/personen
     allowedMethods:
+      - GET
       - POST
     backend:
       slug: haal-centraal-brp
       path: /personen
     requestRewrite: |
-      (
-        if .geslachtsnaam and .geslachtsnaam != "" then {
-          type: "ZoekMetGeslachtsnaamEnGeboortedatum",
-          geslachtsnaam: .geslachtsnaam,
-          geboortedatum: .geboortedatum,
-          fields: ["burgerservicenummer","geboorte", "geslacht", "naam", "adressering"]
-        } else {
-          type: "RaadpleegMetBurgerservicenummer",
-          burgerservicenummer: [ .burgerservicenummer ],
-          fields: ["burgerservicenummer","geboorte", "geslacht", "naam", "adressering"]
-        }
-        end
-      )
+      .
   - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
     backend:
       slug: haal-centraal-brk
@@ -128,13 +117,16 @@ paths:
 backends:
   geoserver:
     type: OWS
-    baseUrl: https://dpt.purmerend.nl/geoserver
+    baseUrl: https://datalab.purmerend.nl/geoserver
+  geoserver-wmts:
+    type: WMTS
+    baseUrl: https://datalab.purmerend.nl/geoserver
   haal-centraal-brp:
     type: REST
-    baseUrl: https://proefomgeving.haalcentraal.nl/haalcentraal/api/brp
+    baseUrl: http://localhost:8051/api/brp/v1
     auth:
       header:
-        X-API-KEY: ${BRP_API_KEY}
+        X-Api-Key: ${BRP_API_KEY}
   haal-centraal-brk:
     type: REST
     baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1

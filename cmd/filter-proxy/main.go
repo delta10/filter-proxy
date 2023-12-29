@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -50,7 +50,35 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r)
+			var filterParams map[string]interface{}
+			if path.RequestRewrite != "" {
+				body, _ := io.ReadAll(r.Body)
+
+				var result map[string]interface{}
+				json.Unmarshal(body, &result)
+
+				query, err := gojq.Parse(path.RequestRewrite)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not parse filter")
+					return
+				}
+
+				iter := query.Run(result)
+				for {
+					v, ok := iter.Next()
+					if !ok {
+						break
+					}
+
+					if _, ok := v.(error); ok {
+						continue
+					}
+
+					filterParams = v.(map[string]interface{})
+				}
+			}
+
+			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, filterParams)
 			if authorizationStatusCode != http.StatusOK {
 				writeError(w, authorizationStatusCode, "unauthorized request")
 				return
@@ -96,45 +124,21 @@ func main() {
 				return
 			}
 
-			if path.RequestRewrite != "" {
-				body, _ := io.ReadAll(r.Body)
-
-				var result map[string]interface{}
-				json.Unmarshal(body, &result)
-
-				query, err := gojq.Parse(path.RequestRewrite)
+			if len(filterParams) > 0 {
+				backendRequestBody, err := json.MarshalIndent(filterParams, "", "    ")
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not parse filter")
+					writeError(w, http.StatusInternalServerError, "could not marshal json")
 					return
 				}
 
-				iter := query.Run(result)
-				for {
-					v, ok := iter.Next()
-					if !ok {
-						break
-					}
-
-					if _, ok := v.(error); ok {
-						continue
-					}
-
-					request, err := json.MarshalIndent(v, "", "    ")
-					if err != nil {
-						writeError(w, http.StatusInternalServerError, "could not marshal json")
-						return
-					}
-
-					backendRequest.Header.Set("Content-Type", "application/json")
-
-					buffer := bytes.NewBuffer(request)
-					backendRequest.Body = io.NopCloser(buffer)
-				}
+				buffer := bytes.NewBuffer(backendRequestBody)
+				backendRequest.Header.Set("Content-Type", "application/json")
+				backendRequest.Body = io.NopCloser(buffer)
 			}
 
 			tlsConfig := &tls.Config{}
 			if backend.Auth.TLS.RootCertificates != "" {
-				rootCertificates, err := ioutil.ReadFile(backend.Auth.TLS.RootCertificates)
+				rootCertificates, err := os.ReadFile(backend.Auth.TLS.RootCertificates)
 				if err != nil {
 					writeError(w, http.StatusInternalServerError, "could not retrieve root certs for backend")
 					return
@@ -187,7 +191,6 @@ func main() {
 
 			if proxyResp.StatusCode == http.StatusOK && (path.ResponseRewrite != "" || authorizationResponse.ResponseFilter != "") {
 				body, _ := io.ReadAll(proxyResp.Body)
-
 				var result map[string]interface{}
 				json.Unmarshal(body, &result)
 
@@ -248,7 +251,7 @@ func main() {
 	}
 }
 
-func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request) (int, *AuthorizationResponse) {
+func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request, filterParams map[string]interface{}) (int, *AuthorizationResponse) {
 	if path.AllowAlways {
 		return http.StatusOK, nil
 	}
@@ -294,6 +297,8 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		}
 	} else if backend.Type == "WMTS" {
 		queryParams := utils.QueryParamsToLower(r.URL.Query())
+		authorizationBody["service"] = queryParams.Get("service")
+		authorizationBody["request"] = queryParams.Get("request")
 		authorizationBody["resource"] = queryParams.Get("layer")
 		authorizationBody["params"] = map[string]interface{}{
 			"service": queryParams.Get("service"),
@@ -301,6 +306,20 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		}
 	} else if backend.Type == "REST" {
 		authorizationBody["resource"] = path.Backend.Path
+
+		params := make(map[string]interface{})
+
+		for k, v := range r.URL.Query() {
+			params[k] = v
+		}
+
+		if path.RequestRewrite != "" {
+			for k, v := range filterParams {
+				params[k] = v
+			}
+		}
+
+		authorizationBody["params"] = params
 	} else if backend.Type != "" {
 		log.Printf("unsupported backend type configured: %s")
 		return http.StatusInternalServerError, nil
