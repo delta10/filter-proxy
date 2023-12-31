@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/base64"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -89,7 +90,8 @@ func ReadUserIP(r *http.Request) string {
 		IPAddress = r.Header.Get("X-Forwarded-For")
 	}
 	if IPAddress == "" {
-		IPAddress = r.RemoteAddr
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		IPAddress = host
 	}
 	return IPAddress
 }
