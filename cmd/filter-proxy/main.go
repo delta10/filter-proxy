@@ -50,7 +50,7 @@ func main() {
 
 			utils.DelHopHeaders(r.Header)
 
-			var filterParams map[string]interface{}
+			var bodyFilterParams map[string]interface{}
 			if path.RequestRewrite != "" {
 				body, _ := io.ReadAll(r.Body)
 
@@ -74,11 +74,11 @@ func main() {
 						continue
 					}
 
-					filterParams = v.(map[string]interface{})
+					bodyFilterParams = v.(map[string]interface{})
 				}
 			}
 
-			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, filterParams)
+			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, bodyFilterParams)
 			if authorizationStatusCode != http.StatusOK {
 				writeError(w, authorizationStatusCode, "unauthorized request")
 				return
@@ -118,22 +118,27 @@ func main() {
 			// Copy query parameters to backend
 			fullBackendURL.RawQuery = r.URL.Query().Encode()
 
-			backendRequest, err := http.NewRequest(r.Method, fullBackendURL.String(), nil)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "could not construct backend request")
-				return
-			}
-
-			if len(filterParams) > 0 {
-				backendRequestBody, err := json.MarshalIndent(filterParams, "", "    ")
+			var backendRequest *http.Request
+			if len(bodyFilterParams) > 0 {
+				backendRequestBody, err := json.MarshalIndent(bodyFilterParams, "", "    ")
 				if err != nil {
 					writeError(w, http.StatusInternalServerError, "could not marshal json")
 					return
 				}
 
-				buffer := bytes.NewBuffer(backendRequestBody)
+				backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), bytes.NewReader(backendRequestBody))
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not construct backend request")
+					return
+				}
+
 				backendRequest.Header.Set("Content-Type", "application/json")
-				backendRequest.Body = io.NopCloser(buffer)
+			} else {
+				backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), nil)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not construct backend request")
+					return
+				}
 			}
 
 			tlsConfig := &tls.Config{}
