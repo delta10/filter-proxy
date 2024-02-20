@@ -85,10 +85,7 @@ func EnvSubst(input string) string {
 }
 
 func ReadUserIP(r *http.Request) string {
-	IPAddress := r.Header.Get("X-Real-Ip")
-	if IPAddress == "" {
-		IPAddress = r.Header.Get("X-Forwarded-For")
-	}
+	IPAddress := r.Header.Get("X-Forwarded-For")
 	if IPAddress == "" {
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
 		IPAddress = host
