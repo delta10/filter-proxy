@@ -225,11 +225,13 @@ func main() {
 					}
 
 					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set("Cache-Control", "private")
 					w.Write(response)
 				}
 			} else {
 				utils.DelHopHeaders(proxyResp.Header)
 				utils.CopyHeader(w.Header(), proxyResp.Header)
+				w.Header().Set("Cache-Control", "private")
 				w.WriteHeader(proxyResp.StatusCode)
 				io.Copy(w, proxyResp.Body)
 			}
