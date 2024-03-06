@@ -27,7 +27,7 @@ type Backend struct {
 type Path struct {
 	Path           string   `yaml:"path"`
 	AllowedMethods []string `yaml:"allowedMethods"`
-	AllowAlways    bool     `yaml:"allowAlways"`
+	Passthrough    bool     `yaml:"passthrough"`
 	Backend        struct {
 		Slug string `yaml:"slug"`
 		Path string `yaml:"path"`

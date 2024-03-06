@@ -41,206 +41,253 @@ func main() {
 	router := mux.NewRouter()
 	for _, configuredPath := range config.Paths {
 		path := configuredPath
-		router.HandleFunc(path.Path, func(w http.ResponseWriter, r *http.Request) {
-			backend, ok := config.Backends[path.Backend.Slug]
-			if !ok {
-				writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
-				return
-			}
 
-			utils.DelHopHeaders(r.Header)
+		if path.Passthrough {
+			router.PathPrefix(path.Path).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				client := &http.Client{}
 
-			var bodyFilterParams map[string]interface{}
-			if path.RequestRewrite != "" {
-				body, _ := io.ReadAll(r.Body)
+				//http: Request.RequestURI can't be set in client requests.
+				//http://golang.org/src/pkg/net/http/client.go
+				r.RequestURI = ""
 
-				var result map[string]interface{}
-				json.Unmarshal(body, &result)
-
-				query, err := gojq.Parse(path.RequestRewrite)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not parse filter")
-					return
-				}
-
-				iter := query.Run(result)
-				for {
-					v, ok := iter.Next()
-					if !ok {
-						break
-					}
-
-					if _, ok := v.(error); ok {
-						continue
-					}
-
-					bodyFilterParams = v.(map[string]interface{})
-				}
-			}
-
-			authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, bodyFilterParams)
-			if authorizationStatusCode != http.StatusOK {
-				writeError(w, authorizationStatusCode, "unauthorized request")
-				return
-			}
-
-			if !authorizationResponse.Result {
-				writeError(w, http.StatusUnauthorized, "result field is not true")
-				return
-			}
-
-			allowedMethods := path.AllowedMethods
-			if len(allowedMethods) == 0 {
-				allowedMethods = []string{"GET"}
-			}
-
-			if !utils.StringInSlice(r.Method, allowedMethods) {
-				writeError(w, http.StatusBadRequest, "request method is not allowed")
-				return
-			}
-
-			routeRegexp, _ := route.NewRouteRegexp(path.Backend.Path, route.RegexpTypePath, route.RouteRegexpOptions{})
-
-			parsedRequestPath, err := routeRegexp.URL(mux.Vars(r))
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "could not parse request URL")
-				return
-			}
-
-			backendBaseUrl, err := url.Parse(backend.BaseURL)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "could not parse backend URL")
-				return
-			}
-
-			fullBackendURL := backendBaseUrl.JoinPath(parsedRequestPath)
-
-			// Copy query parameters to backend
-			fullBackendURL.RawQuery = r.URL.Query().Encode()
-
-			var backendRequest *http.Request
-			if len(bodyFilterParams) > 0 {
-				backendRequestBody, err := json.MarshalIndent(bodyFilterParams, "", "    ")
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not marshal json")
-					return
-				}
-
-				backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), bytes.NewReader(backendRequestBody))
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not construct backend request")
-					return
-				}
-
-				backendRequest.Header.Set("Content-Type", "application/json")
-			} else {
-				backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), nil)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not construct backend request")
-					return
-				}
-			}
-
-			tlsConfig := &tls.Config{}
-			if backend.Auth.TLS.RootCertificates != "" {
-				rootCertificates, err := os.ReadFile(backend.Auth.TLS.RootCertificates)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not retrieve root certs for backend")
-					return
-				}
-
-				roots := x509.NewCertPool()
-				ok := roots.AppendCertsFromPEM(rootCertificates)
+				backend, ok := config.Backends[path.Backend.Slug]
 				if !ok {
-					writeError(w, http.StatusInternalServerError, "could not load root certs for backend")
+					writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
 					return
 				}
 
-				tlsConfig.RootCAs = roots
-			}
-
-			if backend.Auth.TLS.Certificate != "" && backend.Auth.TLS.Key != "" {
-				cert, err := tls.LoadX509KeyPair(backend.Auth.TLS.Certificate, backend.Auth.TLS.Key)
+				backendBaseUrl, err := url.Parse(backend.BaseURL)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not load TLS keypair for backend")
+					writeError(w, http.StatusInternalServerError, "could not parse backend URL")
 					return
 				}
 
-				tlsConfig.Certificates = []tls.Certificate{cert}
-			}
+				r.URL.Host = backendBaseUrl.Host
+				r.URL.Scheme = backendBaseUrl.Scheme
 
-			transport := &http.Transport{TLSClientConfig: tlsConfig}
+				utils.DelHopHeaders(r.Header)
 
-			if backend.Auth.Basic.Username != "" && backend.Auth.Basic.Password != "" {
-				parsedPassword := utils.EnvSubst(backend.Auth.Basic.Password)
-				backendRequest.SetBasicAuth(backend.Auth.Basic.Username, parsedPassword)
-			}
-
-			for headerKey, headerValue := range backend.Auth.Header {
-				parsedHeaderValue := utils.EnvSubst(headerValue)
-				backendRequest.Header.Set(headerKey, parsedHeaderValue)
-			}
-
-			client := &http.Client{
-				Timeout:   25 * time.Second,
-				Transport: transport,
-			}
-
-			proxyResp, err := client.Do(backendRequest)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, fmt.Sprintf("could not fetch backend response: %s", err))
-				return
-			}
-
-			defer proxyResp.Body.Close()
-
-			if proxyResp.StatusCode == http.StatusOK && (path.ResponseRewrite != "" || authorizationResponse.ResponseFilter != "") {
-				body, _ := io.ReadAll(proxyResp.Body)
-				var result map[string]interface{}
-				json.Unmarshal(body, &result)
-
-				var responseRewrite = ""
-				if authorizationResponse.ResponseFilter != "" {
-					responseRewrite = authorizationResponse.ResponseFilter
-				} else {
-					responseRewrite = path.ResponseRewrite
+				client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
 				}
 
-				query, err := gojq.Parse(responseRewrite)
+				resp, err := client.Do(r)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, "could not parse filter")
+					log.Printf("%+v", r.URL)
+					http.Error(w, "Server Error", http.StatusInternalServerError)
+					log.Fatal("ServeHTTP:", err)
+				}
+				defer resp.Body.Close()
+
+				utils.DelHopHeaders(resp.Header)
+				utils.CopyHeader(w.Header(), resp.Header)
+				w.WriteHeader(resp.StatusCode)
+				io.Copy(w, resp.Body)
+			})
+		} else {
+			router.HandleFunc(path.Path, func(w http.ResponseWriter, r *http.Request) {
+				backend, ok := config.Backends[path.Backend.Slug]
+				if !ok {
+					writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
 					return
 				}
 
-				iter := query.Run(result)
-				for {
-					v, ok := iter.Next()
-					if !ok {
-						break
+				utils.DelHopHeaders(r.Header)
+
+				var bodyFilterParams map[string]interface{}
+				if path.RequestRewrite != "" {
+					body, _ := io.ReadAll(r.Body)
+
+					var result map[string]interface{}
+					json.Unmarshal(body, &result)
+
+					query, err := gojq.Parse(path.RequestRewrite)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not parse filter")
+						return
 					}
 
-					if _, ok := v.(error); ok {
-						continue
-					}
+					iter := query.Run(result)
+					for {
+						v, ok := iter.Next()
+						if !ok {
+							break
+						}
 
-					response, err := json.MarshalIndent(v, "", "    ")
+						if _, ok := v.(error); ok {
+							continue
+						}
+
+						bodyFilterParams = v.(map[string]interface{})
+					}
+				}
+
+				authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, bodyFilterParams)
+				if authorizationStatusCode != http.StatusOK {
+					writeError(w, authorizationStatusCode, "unauthorized request")
+					return
+				}
+
+				if !authorizationResponse.Result {
+					writeError(w, http.StatusUnauthorized, "result field is not true")
+					return
+				}
+
+				allowedMethods := path.AllowedMethods
+				if len(allowedMethods) == 0 {
+					allowedMethods = []string{"GET"}
+				}
+
+				if !utils.StringInSlice(r.Method, allowedMethods) {
+					writeError(w, http.StatusBadRequest, "request method is not allowed")
+					return
+				}
+
+				routeRegexp, _ := route.NewRouteRegexp(path.Backend.Path, route.RegexpTypePath, route.RouteRegexpOptions{})
+
+				parsedRequestPath, err := routeRegexp.URL(mux.Vars(r))
+				if err != nil {
+					writeError(w, http.StatusBadRequest, "could not parse request URL")
+					return
+				}
+
+				backendBaseUrl, err := url.Parse(backend.BaseURL)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "could not parse backend URL")
+					return
+				}
+
+				fullBackendURL := backendBaseUrl.JoinPath(parsedRequestPath)
+
+				// Copy query parameters to backend
+				fullBackendURL.RawQuery = r.URL.Query().Encode()
+
+				var backendRequest *http.Request
+				if len(bodyFilterParams) > 0 {
+					backendRequestBody, err := json.MarshalIndent(bodyFilterParams, "", "    ")
 					if err != nil {
 						writeError(w, http.StatusInternalServerError, "could not marshal json")
 						return
 					}
 
-					w.Header().Set("Content-Type", "application/json")
-					w.Header().Set("Cache-Control", "private")
-					w.Write(response)
+					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), bytes.NewReader(backendRequestBody))
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not construct backend request")
+						return
+					}
+
+					log.Printf("%+v", backendRequest)
+
+					backendRequest.Header.Set("Content-Type", "application/json")
+				} else {
+					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), nil)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not construct backend request")
+						return
+					}
 				}
-			} else {
-				utils.DelHopHeaders(proxyResp.Header)
-				utils.CopyHeader(w.Header(), proxyResp.Header)
-				w.Header().Set("Cache-Control", "private")
-				w.WriteHeader(proxyResp.StatusCode)
-				io.Copy(w, proxyResp.Body)
-			}
-		})
+
+				tlsConfig := &tls.Config{}
+				if backend.Auth.TLS.RootCertificates != "" {
+					rootCertificates, err := os.ReadFile(backend.Auth.TLS.RootCertificates)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not retrieve root certs for backend")
+						return
+					}
+
+					roots := x509.NewCertPool()
+					ok := roots.AppendCertsFromPEM(rootCertificates)
+					if !ok {
+						writeError(w, http.StatusInternalServerError, "could not load root certs for backend")
+						return
+					}
+
+					tlsConfig.RootCAs = roots
+				}
+
+				if backend.Auth.TLS.Certificate != "" && backend.Auth.TLS.Key != "" {
+					cert, err := tls.LoadX509KeyPair(backend.Auth.TLS.Certificate, backend.Auth.TLS.Key)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not load TLS keypair for backend")
+						return
+					}
+
+					tlsConfig.Certificates = []tls.Certificate{cert}
+				}
+
+				transport := &http.Transport{TLSClientConfig: tlsConfig}
+
+				if backend.Auth.Basic.Username != "" && backend.Auth.Basic.Password != "" {
+					parsedPassword := utils.EnvSubst(backend.Auth.Basic.Password)
+					backendRequest.SetBasicAuth(backend.Auth.Basic.Username, parsedPassword)
+				}
+
+				for headerKey, headerValue := range backend.Auth.Header {
+					parsedHeaderValue := utils.EnvSubst(headerValue)
+					backendRequest.Header.Set(headerKey, parsedHeaderValue)
+				}
+
+				client := &http.Client{
+					Timeout:   25 * time.Second,
+					Transport: transport,
+				}
+
+				proxyResp, err := client.Do(backendRequest)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, fmt.Sprintf("could not fetch backend response: %s", err))
+					return
+				}
+
+				defer proxyResp.Body.Close()
+
+				if proxyResp.StatusCode == http.StatusOK && (path.ResponseRewrite != "" || authorizationResponse.ResponseFilter != "") {
+					body, _ := io.ReadAll(proxyResp.Body)
+					var result map[string]interface{}
+					json.Unmarshal(body, &result)
+
+					var responseRewrite = ""
+					if authorizationResponse.ResponseFilter != "" {
+						responseRewrite = authorizationResponse.ResponseFilter
+					} else {
+						responseRewrite = path.ResponseRewrite
+					}
+
+					query, err := gojq.Parse(responseRewrite)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, "could not parse filter")
+						return
+					}
+
+					iter := query.Run(result)
+					for {
+						v, ok := iter.Next()
+						if !ok {
+							break
+						}
+
+						if _, ok := v.(error); ok {
+							continue
+						}
+
+						response, err := json.MarshalIndent(v, "", "    ")
+						if err != nil {
+							writeError(w, http.StatusInternalServerError, "could not marshal json")
+							return
+						}
+
+						w.Header().Set("Content-Type", "application/json")
+						w.Header().Set("Cache-Control", "private")
+						w.Write(response)
+					}
+				} else {
+					utils.DelHopHeaders(proxyResp.Header)
+					utils.CopyHeader(w.Header(), proxyResp.Header)
+					w.Header().Set("Cache-Control", "private")
+					w.WriteHeader(proxyResp.StatusCode)
+					io.Copy(w, proxyResp.Body)
+				}
+			})
+		}
 	}
 
 	s := &http.Server{
@@ -259,10 +306,6 @@ func main() {
 }
 
 func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request, filterParams map[string]interface{}) (int, *AuthorizationResponse) {
-	if path.AllowAlways {
-		return http.StatusOK, nil
-	}
-
 	if config.AuthorizationServiceURL == "" {
 		log.Print("returned unauthenticated as there is no authorization service URL configured")
 		return http.StatusInternalServerError, nil
