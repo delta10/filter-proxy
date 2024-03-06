@@ -71,6 +71,11 @@ func main() {
 					return http.ErrUseLastResponse
 				}
 
+				for headerKey, headerValue := range backend.Auth.Header {
+					parsedHeaderValue := utils.EnvSubst(headerValue)
+					r.Header.Set(headerKey, parsedHeaderValue)
+				}
+
 				resp, err := client.Do(r)
 				if err != nil {
 					log.Printf("%+v", r.URL)
