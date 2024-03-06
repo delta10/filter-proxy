@@ -65,7 +65,10 @@ func main() {
 				r.URL.Host = backendBaseUrl.Host
 				r.URL.Scheme = backendBaseUrl.Scheme
 
-				log.Printf("%v", r.URL)
+				for headerKey, headerValue := range backend.Auth.Header {
+					parsedHeaderValue := utils.EnvSubst(headerValue)
+					r.Header.Set(headerKey, parsedHeaderValue)
+				}
 
 				utils.DelHopHeaders(r.Header)
 
