@@ -11,6 +11,11 @@ paths:
     backend:
       slug: geoserver
       path: /ows
+  - path: /geoserver/
+    passthrough: true
+    backend:
+      slug: geoserver
+      path: /
   - path: /api/wmts
     backend:
       slug: geoserver-wmts
@@ -117,10 +122,10 @@ paths:
 backends:
   geoserver:
     type: OWS
-    baseUrl: https://datalab.purmerend.nl/geoserver
+    baseUrl: http://localhost/geoserver
   geoserver-wmts:
     type: WMTS
-    baseUrl: https://datalab.purmerend.nl/geoserver
+    baseUrl: http://localhost/geoserver
   haal-centraal-brp:
     type: REST
     baseUrl: http://localhost:8051/api/brp/v1
