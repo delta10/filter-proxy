@@ -1,0 +1,19 @@
+{
+    "CN": "localhost",
+    "hosts": [
+        "localhost"
+    ],
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "NL",
+            "L": "Utrecht",
+            "O": "filter-proxy",
+            "OU": "localhost",
+            "ST": "Utrecht"
+        }
+    ]
+}
