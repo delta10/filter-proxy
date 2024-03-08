@@ -1,8 +1,8 @@
 listenAddress: localhost:8050
 
 # listenTls:
-#   certificate: tls.crt
-#   key: tls.key
+#   certificate: tls.pem
+#   key: tls-key.pem
 
 authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
 
