@@ -6,6 +6,12 @@ listenAddress: localhost:8050
 
 authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
 
+cors:
+  allowedOrigins: []
+  allowedMethods: []
+  allowedHeaders: []
+  allowCredentials: true
+
 paths:
   - path: /api/ows
     backend:

@@ -16,6 +16,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/mux"
 	"github.com/itchyny/gojq"
+	"github.com/rs/cors"
 
 	"github.com/delta10/filter-proxy/internal/config"
 	"github.com/delta10/filter-proxy/internal/route"
@@ -78,10 +79,10 @@ func main() {
 
 				resp, err := client.Do(r)
 				if err != nil {
-					log.Printf("%+v", r.URL)
-					http.Error(w, "Server Error", http.StatusInternalServerError)
-					log.Fatal("ServeHTTP:", err)
+					writeError(w, http.StatusBadGateway, fmt.Sprintf("could not fetch backend response: %s", err))
+					return
 				}
+
 				defer resp.Body.Close()
 
 				utils.DelHopHeaders(resp.Header)
@@ -239,7 +240,7 @@ func main() {
 
 				proxyResp, err := client.Do(backendRequest)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, fmt.Sprintf("could not fetch backend response: %s", err))
+					writeError(w, http.StatusBadGateway, fmt.Sprintf("could not fetch backend response: %s", err))
 					return
 				}
 
@@ -295,9 +296,23 @@ func main() {
 		}
 	}
 
+	var httpHandler http.Handler
+	if len(config.Cors.AllowedOrigins) > 0 {
+		c := cors.New(cors.Options{
+			AllowedOrigins:   config.Cors.AllowedOrigins,
+			AllowedMethods:   config.Cors.AllowedMethods,
+			AllowedHeaders:   config.Cors.AllowedHeaders,
+			AllowCredentials: config.Cors.AllowCredentials,
+		})
+
+		httpHandler = c.Handler(router)
+	} else {
+		httpHandler = router
+	}
+
 	s := &http.Server{
 		Addr:           config.ListenAddress,
-		Handler:        router,
+		Handler:        httpHandler,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
@@ -403,7 +418,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 	request.Header.Set("X-Forwarded-For", utils.ReadUserIP(r))
 
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 25 * time.Second,
 	}
 
 	resp, err := client.Do(request)
