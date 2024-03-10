@@ -72,6 +72,7 @@ func main() {
 				}
 
 				utils.DelHopHeaders(r.Header)
+				addForwardedForHeaders(r, r)
 
 				client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 					return http.ErrUseLastResponse
@@ -182,8 +183,6 @@ func main() {
 						return
 					}
 
-					log.Printf("%+v", backendRequest)
-
 					backendRequest.Header.Set("Content-Type", "application/json")
 				} else {
 					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), nil)
@@ -232,6 +231,8 @@ func main() {
 					parsedHeaderValue := utils.EnvSubst(headerValue)
 					backendRequest.Header.Set(headerKey, parsedHeaderValue)
 				}
+
+				addForwardedForHeaders(backendRequest, r)
 
 				client := &http.Client{
 					Timeout:   25 * time.Second,
@@ -312,12 +313,13 @@ func main() {
 
 	s := &http.Server{
 		Addr:           config.ListenAddress,
-		Handler:        httpHandler,
+		Handler:        requestLoggingMiddleware(httpHandler),
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
+	log.Printf("listening on %v", config.ListenAddress)
 	if config.ListenTLS.Certificate != "" && config.ListenTLS.Key != "" {
 		log.Fatal(s.ListenAndServeTLS(config.ListenTLS.Certificate, config.ListenTLS.Key))
 	} else {
@@ -391,7 +393,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 
 		authorizationBody["params"] = params
 	} else if backend.Type != "" {
-		log.Printf("unsupported backend type configured: %s")
+		log.Printf("unsupported backend type configured: %s", backend.Type)
 		return http.StatusInternalServerError, nil
 	}
 
@@ -415,7 +417,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		request.Header.Set("Authorization", r.Header.Get("Authorization"))
 	}
 
-	request.Header.Set("X-Forwarded-For", utils.ReadUserIP(r))
+	addForwardedForHeaders(request, r)
 
 	client := &http.Client{
 		Timeout: 25 * time.Second,
@@ -460,4 +462,30 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonResp)
+}
+
+func addForwardedForHeaders(backendRequest *http.Request, originalRequest *http.Request) {
+	backendRequest.Header.Set("X-Forwarded-Host", originalRequest.Host)
+	backendRequest.Header.Set("X-Forwarded-For", utils.ReadUserIP(originalRequest))
+
+	if originalRequest.TLS == nil {
+		backendRequest.Header.Set("X-Forwarded-Proto", "http")
+	} else {
+		backendRequest.Header.Set("X-Forwarded-Proto", "https")
+	}
+}
+
+func requestLoggingMiddleware(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		log.Printf(
+			"%s %s %s",
+			r.Method,
+			r.URL.Path,
+			r.Header.Get("User-Agent"),
+		)
+
+		next.ServeHTTP(w, r)
+	}
+
+	return http.HandlerFunc(fn)
 }
