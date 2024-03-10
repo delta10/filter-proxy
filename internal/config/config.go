@@ -36,6 +36,13 @@ type Path struct {
 	ResponseRewrite string `yaml:"responseRewrite"`
 }
 
+type Cors struct {
+	AllowedOrigins   []string `yaml:"allowedOrigins"`
+	AllowedMethods   []string `yaml:"allowedMethods"`
+	AllowedHeaders   []string `yaml:"allowedHeaders"`
+	AllowCredentials bool     `yaml:"allowCredentials"`
+}
+
 type Config struct {
 	ListenAddress string `yaml:"listenAddress"`
 	ListenTLS     struct {
@@ -46,6 +53,7 @@ type Config struct {
 	JwksURL                 string             `yaml:"jwksUrl"`
 	Paths                   []Path             `yaml:"paths"`
 	Backends                map[string]Backend `yaml:"backends"`
+	Cors                    Cors               `yaml:"cors"`
 }
 
 // NewConfig returns a new decoded Config struct
