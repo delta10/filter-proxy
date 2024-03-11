@@ -45,6 +45,12 @@ func main() {
 
 		if path.Passthrough {
 			router.PathPrefix(path.Path).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodOptions {
+					w.Header().Add("Methods", "OPTIONS, GET, HEAD")
+					writeError(w, http.StatusOK, "options response from filter-proxy")
+					return
+				}
+
 				client := &http.Client{}
 
 				//http: Request.RequestURI can't be set in client requests.
@@ -96,6 +102,12 @@ func main() {
 				backend, ok := config.Backends[path.Backend.Slug]
 				if !ok {
 					writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
+					return
+				}
+
+				if r.Method == http.MethodOptions {
+					w.Header().Add("Methods", "OPTIONS, GET, HEAD")
+					writeError(w, http.StatusOK, "options response from filter-proxy")
 					return
 				}
 
