@@ -312,10 +312,11 @@ func main() {
 	var httpHandler http.Handler
 	if len(config.Cors.AllowedOrigins) > 0 {
 		c := cors.New(cors.Options{
-			AllowedOrigins:   config.Cors.AllowedOrigins,
-			AllowedMethods:   config.Cors.AllowedMethods,
-			AllowedHeaders:   config.Cors.AllowedHeaders,
-			AllowCredentials: config.Cors.AllowCredentials,
+			AllowedOrigins:      config.Cors.AllowedOrigins,
+			AllowedMethods:      config.Cors.AllowedMethods,
+			AllowedHeaders:      config.Cors.AllowedHeaders,
+			AllowCredentials:    config.Cors.AllowCredentials,
+			AllowPrivateNetwork: config.Cors.AllowPrivateNetwork,
 		})
 
 		httpHandler = c.Handler(router)

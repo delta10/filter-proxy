@@ -37,10 +37,11 @@ type Path struct {
 }
 
 type Cors struct {
-	AllowedOrigins   []string `yaml:"allowedOrigins"`
-	AllowedMethods   []string `yaml:"allowedMethods"`
-	AllowedHeaders   []string `yaml:"allowedHeaders"`
-	AllowCredentials bool     `yaml:"allowCredentials"`
+	AllowedOrigins      []string `yaml:"allowedOrigins"`
+	AllowedMethods      []string `yaml:"allowedMethods"`
+	AllowedHeaders      []string `yaml:"allowedHeaders"`
+	AllowCredentials    bool     `yaml:"allowCredentials"`
+	AllowPrivateNetwork bool     `yaml:"allowPrivateNetwork"`
 }
 
 type Config struct {
