@@ -42,6 +42,7 @@ type Cors struct {
 	AllowedHeaders      []string `yaml:"allowedHeaders"`
 	AllowCredentials    bool     `yaml:"allowCredentials"`
 	AllowPrivateNetwork bool     `yaml:"allowPrivateNetwork"`
+	DebugLogging        bool     `yaml:"debugLogging"`
 }
 
 type Config struct {
