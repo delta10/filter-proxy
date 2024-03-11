@@ -7,10 +7,12 @@ listenAddress: localhost:8050
 authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
 
 cors:
-  allowedOrigins: []
-  allowedMethods: []
-  allowedHeaders: []
-  allowCredentials: true
+  # allowedOrigins: ["http://www.test.nl"]
+  # allowedMethods: ["GET"]
+  # allowedHeaders: []
+  # allowCredentials: true
+  # allowPrivateNetwork: true
+  # debugLogging: false
 
 paths:
   - path: /api/ows

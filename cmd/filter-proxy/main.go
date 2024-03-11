@@ -45,12 +45,6 @@ func main() {
 
 		if path.Passthrough {
 			router.PathPrefix(path.Path).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodOptions {
-					w.Header().Add("Methods", "OPTIONS, GET, HEAD")
-					writeError(w, http.StatusOK, "options response from filter-proxy")
-					return
-				}
-
 				client := &http.Client{}
 
 				//http: Request.RequestURI can't be set in client requests.
@@ -102,12 +96,6 @@ func main() {
 				backend, ok := config.Backends[path.Backend.Slug]
 				if !ok {
 					writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
-					return
-				}
-
-				if r.Method == http.MethodOptions {
-					w.Header().Add("Methods", "OPTIONS, GET, HEAD")
-					writeError(w, http.StatusOK, "options response from filter-proxy")
 					return
 				}
 
@@ -309,24 +297,42 @@ func main() {
 		}
 	}
 
-	var httpHandler http.Handler
-	if len(config.Cors.AllowedOrigins) > 0 {
-		c := cors.New(cors.Options{
-			AllowedOrigins:      config.Cors.AllowedOrigins,
-			AllowedMethods:      config.Cors.AllowedMethods,
-			AllowedHeaders:      config.Cors.AllowedHeaders,
-			AllowCredentials:    config.Cors.AllowCredentials,
-			AllowPrivateNetwork: config.Cors.AllowPrivateNetwork,
-		})
-
-		httpHandler = c.Handler(router)
-	} else {
-		httpHandler = router
+	// By default allow only https://filter-proxy.local
+	corsOptions := cors.Options{
+		AllowedOrigins: []string{
+			"https://filter-proxy.local",
+		},
+		Debug:              config.Cors.DebugLogging,
+		OptionsPassthrough: false,
 	}
+
+	if len(config.Cors.AllowedOrigins) > 0 {
+		corsOptions.AllowedOrigins = config.Cors.AllowedOrigins
+	}
+
+	if len(config.Cors.AllowedMethods) > 0 {
+		corsOptions.AllowedMethods = config.Cors.AllowedMethods
+	}
+
+	if len(config.Cors.AllowedHeaders) > 0 {
+		corsOptions.AllowedHeaders = config.Cors.AllowedHeaders
+	}
+
+	if config.Cors.AllowCredentials {
+		corsOptions.AllowCredentials = config.Cors.AllowCredentials
+	}
+
+	if config.Cors.AllowPrivateNetwork {
+		corsOptions.AllowPrivateNetwork = config.Cors.AllowPrivateNetwork
+	}
+
+	c := cors.New(corsOptions)
+
+	handler := c.Handler(router)
 
 	s := &http.Server{
 		Addr:           config.ListenAddress,
-		Handler:        requestLoggingMiddleware(httpHandler),
+		Handler:        requestLoggingMiddleware(handler),
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
