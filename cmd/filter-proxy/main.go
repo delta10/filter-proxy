@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +22,7 @@ import (
 	"github.com/delta10/filter-proxy/internal/config"
 	"github.com/delta10/filter-proxy/internal/route"
 	"github.com/delta10/filter-proxy/internal/utils"
+	"github.com/delta10/filter-proxy/internal/wfs"
 )
 
 type ClaimsWithGroups struct {
@@ -93,6 +95,8 @@ func main() {
 			})
 		} else {
 			router.HandleFunc(path.Path, func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+
 				backend, ok := config.Backends[path.Backend.Slug]
 				if !ok {
 					writeError(w, http.StatusBadRequest, "could not find backend associated with this path: "+path.Backend.Slug)
@@ -103,8 +107,6 @@ func main() {
 
 				var bodyFilterParams map[string]interface{}
 				if path.RequestRewrite != "" {
-					body, _ := io.ReadAll(r.Body)
-
 					var result map[string]interface{}
 					json.Unmarshal(body, &result)
 
@@ -129,7 +131,7 @@ func main() {
 					}
 				}
 
-				authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, bodyFilterParams)
+				authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, bodyFilterParams, body)
 				if authorizationStatusCode != http.StatusOK {
 					writeError(w, authorizationStatusCode, "unauthorized request")
 					return
@@ -185,7 +187,8 @@ func main() {
 
 					backendRequest.Header.Set("Content-Type", "application/json")
 				} else {
-					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), nil)
+					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), bytes.NewReader(body))
+
 					if err != nil {
 						writeError(w, http.StatusInternalServerError, "could not construct backend request")
 						return
@@ -346,7 +349,7 @@ func main() {
 	}
 }
 
-func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request, filterParams map[string]interface{}) (int, *AuthorizationResponse) {
+func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request, filterParams map[string]interface{}, body []byte) (int, *AuthorizationResponse) {
 	if config.AuthorizationServiceURL == "" {
 		log.Print("returned unauthenticated as there is no authorization service URL configured")
 		return http.StatusInternalServerError, nil
@@ -365,23 +368,45 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 
 	if backend.Type == "OWS" {
 		queryParams := utils.QueryParamsToLower(r.URL.Query())
-		authorizationBody["service"] = queryParams.Get("service")
-		authorizationBody["request"] = queryParams.Get("request")
+		var transaction wfs.Transaction
+
+		requestParam := queryParams.Get("request")
+		serviceParam := queryParams.Get("service")
+
+		err := xml.Unmarshal(body, &transaction)
+		transactionSet := transaction.XMLName.Local != ""
+
+		if transactionSet && requestParam != "" {
+			log.Printf("Invalid: both XML and query param 'request' are set")
+			return http.StatusBadRequest, nil
+		}
+
+		if len(body) > 0 && err != nil {
+			log.Printf("Body present but could not unmarshal into WFS.Transaction: %v", err)
+			return http.StatusBadRequest, nil
+		}
+
+		authorizationBody["service"] = serviceParam
 
 		if authorizationBody["service"] == "WMS" {
 			authorizationBody["resource"] = queryParams.Get("layers") + queryParams.Get("layer")
 			authorizationBody["params"] = map[string]interface{}{
-				"service":    queryParams.Get("service"),
-				"request":    queryParams.Get("request"),
+				"service":    serviceParam,
+				"request":    requestParam,
 				"cql_filter": queryParams.Get("cql_filter"),
 			}
 		} else if authorizationBody["service"] == "WFS" {
 			authorizationBody["resource"] = queryParams.Get("typename") + queryParams.Get("typenames")
 			authorizationBody["params"] = map[string]interface{}{
-				"service":    queryParams.Get("service"),
-				"request":    queryParams.Get("request"),
+				"service":    serviceParam,
+				"request":    requestParam,
 				"cql_filter": queryParams.Get("cql_filter"),
 			}
+		} else if transactionSet {
+			layerName, transactionCount := utils.GetTransactionMetadata(transaction)
+			log.Printf("Processing XML Transaction: Layer=%s, Count=%d", layerName, transactionCount)
+
+			authorizationBody["resource"] = layerName
 		} else {
 			log.Printf("unauthorized service type: %s", authorizationBody["service"])
 			return http.StatusUnauthorized, nil
@@ -450,21 +475,21 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	resBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("could not read authorization response: %s", err)
 		return http.StatusInternalServerError, nil
 	}
 
 	responseData := AuthorizationResponse{}
-	err = json.Unmarshal(body, &responseData)
+	err = json.Unmarshal(resBody, &responseData)
 	if err != nil {
 		log.Printf("could not unmarshal authorization response: %s", err)
 		return http.StatusInternalServerError, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("received an authorization error: %v, %s", resp.StatusCode, body)
+		log.Printf("received an authorization error: %v, %s", resp.StatusCode, resBody)
 	}
 
 	return resp.StatusCode, &responseData
