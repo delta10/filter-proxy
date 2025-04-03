@@ -107,19 +107,19 @@ func StringInSlice(a string, list []string) bool {
 
 func GetTransactionMetadata(t wfs.Transaction) (string, int) {
 	var (
-		layerName string
-		count     int
+		lastLayerName string
+		count         int
 	)
 
 	if inserts := t.Inserts; len(inserts) == 1 {
-		layerName, count = inserts[0].Layers[0].XMLName.Local, count+1
+		lastLayerName, count = inserts[0].Layers[0].XMLName.Local, count+1
 	}
 	if updates := t.Updates; len(updates) == 1 {
-		layerName, count = updates[0].TypeName, count+1
+		lastLayerName, count = updates[0].TypeName, count+1
 	}
 	if deletes := t.Deletes; len(deletes) == 1 {
-		layerName, count = deletes[0].TypeName, count+1
+		lastLayerName, count = deletes[0].TypeName, count+1
 	}
 
-	return layerName, count
+	return lastLayerName, count
 }

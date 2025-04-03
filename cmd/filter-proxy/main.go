@@ -131,7 +131,7 @@ func main() {
 					}
 				}
 
-				authorizationStatusCode, authorizationResponse := authorizeRequestWithService(config, backend, path, r, bodyFilterParams, body)
+				authorizationStatusCode, authorizationResponse, isTransaction := authorizeRequestWithService(config, backend, path, r, bodyFilterParams, body)
 				if authorizationStatusCode != http.StatusOK {
 					writeError(w, authorizationStatusCode, "unauthorized request")
 					return
@@ -187,7 +187,21 @@ func main() {
 
 					backendRequest.Header.Set("Content-Type", "application/json")
 				} else {
-					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), bytes.NewReader(body))
+					requestBody := io.Reader(nil)
+
+					if isTransaction {
+						var transactionBody wfs.Transaction
+
+						err := xml.Unmarshal(body, &transactionBody)
+						if err != nil {
+							writeError(w, http.StatusBadRequest, "Error validating transaction body while constructing backend request")
+							return
+						}
+
+						requestBody = bytes.NewReader(body)
+					}
+
+					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), requestBody)
 
 					if err != nil {
 						writeError(w, http.StatusInternalServerError, "could not construct backend request")
@@ -349,15 +363,15 @@ func main() {
 	}
 }
 
-func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request, filterParams map[string]interface{}, body []byte) (int, *AuthorizationResponse) {
+func authorizeRequestWithService(config *config.Config, backend config.Backend, path config.Path, r *http.Request, filterParams map[string]interface{}, body []byte) (int, *AuthorizationResponse, bool) {
 	if config.AuthorizationServiceURL == "" {
 		log.Print("returned unauthenticated as there is no authorization service URL configured")
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	if utils.QueryParamsContainMultipleKeys(r.URL.Query()) {
 		log.Print("rejected request as query parameters contain multiple keys")
-		return http.StatusBadRequest, nil
+		return http.StatusBadRequest, nil, false
 	}
 
 	authorizationBody := map[string]interface{}{
@@ -366,6 +380,8 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		"ip":         utils.ReadUserIP(r),
 	}
 
+	isTransactionSet := false
+
 	if backend.Type == "OWS" {
 		queryParams := utils.QueryParamsToLower(r.URL.Query())
 		var transaction wfs.Transaction
@@ -373,17 +389,18 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		requestParam := queryParams.Get("request")
 		serviceParam := queryParams.Get("service")
 
+		if len(body) > 0 && requestParam != "" {
+			log.Printf("Invalid: both XML and query param are set")
+			return http.StatusBadRequest, nil, false
+		}
+
 		err := xml.Unmarshal(body, &transaction)
 		transactionSet := transaction.XMLName.Local != ""
-
-		if transactionSet && requestParam != "" {
-			log.Printf("Invalid: both XML and query param 'request' are set")
-			return http.StatusBadRequest, nil
-		}
+		isTransactionSet = transactionSet
 
 		if len(body) > 0 && err != nil {
 			log.Printf("Body present but could not unmarshal into WFS.Transaction: %v", err)
-			return http.StatusBadRequest, nil
+			return http.StatusBadRequest, nil, false
 		}
 
 		authorizationBody["service"] = serviceParam
@@ -404,12 +421,16 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 			}
 		} else if transactionSet {
 			layerName, transactionCount := utils.GetTransactionMetadata(transaction)
-			log.Printf("Processing XML Transaction: Layer=%s, Count=%d", layerName, transactionCount)
+
+			if transactionCount > 1 {
+				log.Printf("we only allow one wfs transaction at a time")
+				return http.StatusBadRequest, nil, false
+			}
 
 			authorizationBody["resource"] = layerName
 		} else {
 			log.Printf("unauthorized service type: %s", authorizationBody["service"])
-			return http.StatusUnauthorized, nil
+			return http.StatusUnauthorized, nil, false
 		}
 	} else if backend.Type == "WMTS" {
 		queryParams := utils.QueryParamsToLower(r.URL.Query())
@@ -438,19 +459,19 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		authorizationBody["params"] = params
 	} else if backend.Type != "" {
 		log.Printf("unsupported backend type configured: %s", backend.Type)
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	marshalledAuthorizationBody, err := json.Marshal(authorizationBody)
 	if err != nil {
 		log.Print("could not marshall authorization body")
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	request, err := http.NewRequest("GET", config.AuthorizationServiceURL, bytes.NewReader(marshalledAuthorizationBody))
 	if err != nil {
 		log.Print("could not construct authorization request")
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	if r.Header.Get("Cookie") != "" {
@@ -470,7 +491,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Printf("could not fetch authorization response: %s", err)
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	defer resp.Body.Close()
@@ -478,21 +499,21 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 	resBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("could not read authorization response: %s", err)
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	responseData := AuthorizationResponse{}
 	err = json.Unmarshal(resBody, &responseData)
 	if err != nil {
 		log.Printf("could not unmarshal authorization response: %s", err)
-		return http.StatusInternalServerError, nil
+		return http.StatusInternalServerError, nil, false
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("received an authorization error: %v, %s", resp.StatusCode, resBody)
 	}
 
-	return resp.StatusCode, &responseData
+	return resp.StatusCode, &responseData, isTransactionSet
 }
 
 func writeError(w http.ResponseWriter, statusCode int, message string) {
