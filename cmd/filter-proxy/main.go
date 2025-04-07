@@ -410,6 +410,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		}
 
 		authorizationBody["service"] = serviceParam
+		authorizationBody["request"] = requestParam
 
 		if authorizationBody["service"] == "WMS" {
 			authorizationBody["resource"] = queryParams.Get("layers") + queryParams.Get("layer")
@@ -434,6 +435,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 			}
 
 			authorizationBody["resource"] = layerName
+			authorizationBody["request"] = "Transaction"
 		} else {
 			log.Printf("unauthorized service type: %s", authorizationBody["service"])
 			return http.StatusUnauthorized, nil, false
