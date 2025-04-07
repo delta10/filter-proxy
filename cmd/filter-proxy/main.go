@@ -193,12 +193,18 @@ func main() {
 						var transactionBody wfs.Transaction
 
 						err := xml.Unmarshal(body, &transactionBody)
-						if err != nil {
+						if len(body) > 0 && err != nil {
 							writeError(w, http.StatusBadRequest, "Error validating transaction body while constructing backend request")
 							return
 						}
 
-						requestBody = bytes.NewReader(body)
+						marshaledBody, err := xml.Marshal(transactionBody)
+						if err != nil {
+							writeError(w, http.StatusInternalServerError, "Error processing transaction body")
+							return
+						}
+
+						requestBody = bytes.NewReader(marshaledBody)
 					}
 
 					backendRequest, err = http.NewRequest(r.Method, fullBackendURL.String(), requestBody)

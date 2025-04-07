@@ -6,9 +6,8 @@ type Transaction struct {
 	XMLName        xml.Name       `xml:"http://www.opengis.net/wfs Transaction"`
 	Service        string         `xml:"service,attr"`
 	Version        string         `xml:"version,attr"`
-	XMLNS          string         `xml:"xmlns,attr"`
-	XSI            string         `xml:"xmlns:xsi,attr"`
-	SchemaLocation string         `xml:"xsi:schemaLocation,attr"`
+	XSI            string         `xml:",xmlns:xsi,attr"`
+	SchemaLocation string         `xml:",xsi:schemaLocation,attr"`
 	Inserts        []Action       `xml:"Insert"`
 	Updates        []UpdateAction `xml:"Update"`
 	Deletes        []DeleteAction `xml:"Delete"`
@@ -20,15 +19,8 @@ type Action struct {
 
 type Layer struct {
 	XMLName xml.Name
-	Attrs   []xml.Attr  `xml:",any,attr"`
-	Content []InnerNode `xml:",any"`
-}
-
-type InnerNode struct {
-	XMLName xml.Name
-	Attrs   []xml.Attr  `xml:",any,attr"`
-	Content string      `xml:",chardata"`
-	Nodes   []InnerNode `xml:",any"`
+	Attrs   []xml.Attr `xml:",any,attr"`
+	Content []XMLValue `xml:",any"`
 }
 
 type UpdateAction struct {
@@ -46,8 +38,7 @@ type Property struct {
 type XMLValue struct {
 	XMLName xml.Name
 	Attrs   []xml.Attr `xml:",any,attr"`
-	Content string     `xml:",chardata"`
-	Nodes   []XMLValue `xml:",any"`
+	Inner   []byte     `xml:",innerxml"`
 }
 
 type DeleteAction struct {
