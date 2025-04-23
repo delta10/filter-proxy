@@ -1,10 +1,20 @@
-listenAddress: :8050
+listenAddress: localhost:8050
+
+# listenTls:
+#   certificate: tls.pem
+#   key: tls-key.pem
 
 authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize/
 
 cors:
+# allowedOrigins: ["http://www.test.nl"]
+# allowedMethods: ["GET"]
+# allowedHeaders: []
+# allowCredentials: true
+# allowPrivateNetwork: true
+# debugLogging: false
   allowedOrigins:
-    - http://localhost:8000
+  - http://localhost:8000
   allowedHeaders:
     - Accept
     - Authorization
@@ -22,7 +32,110 @@ paths:
     allowedMethods:
       - GET
       - POST
-  - path: /api/kvk/zoeken
+  - path: /geoserver/
+    passthrough: true
+    backend:
+      slug: geoserver
+      path: /
+  - path: /api/wmts
+    backend:
+      slug: geoserver-wmts
+      path: /gwc/service/wmts
+  - path: /api/brp/v1/personen
+    allowedMethods:
+      - GET
+      - POST
+    backend:
+      slug: haal-centraal-brp
+      path: /personen
+    requestRewrite: |
+      .
+  - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
+    backend:
+      slug: haal-centraal-brk
+      path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}
+    responseRewrite: |
+      {
+        aardCultuurBebouwd: .aardCultuurBebouwd,
+        adressen: .adressen,
+        begrenzingPerceel: .begrenzingPerceel,
+        identificatie: .identificatie,
+        kadastraleAanduiding: .kadastraleAanduiding,
+        kadastraleGrootte: .kadastraleGrootte,
+        perceelnummerRotatie: .perceelnummerRotatie,
+        perceelnummerVerschuiving: .perceelnummerVerschuiving,
+        plaatscoordinaten: .plaatscoordinaten,
+        toelichtingBewaarder: .toelichtingBewaarder,
+        type: .type,
+        zakelijkGerechtigdeIdentificaties: .zakelijkGerechtigdeIdentificaties
+      }
+  - path: /api/brk/v1/kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
+    backend:
+      slug: haal-centraal-brk
+      path: /kadastraalonroerendezaken/{kadastraalOnroerendeZaakIdentificatie:[0-9]+}/zakelijkgerechtigden
+    responseRewrite: |
+      {
+        "_embedded": {
+          "zakelijkGerechtigden": [
+            ._embedded.zakelijkGerechtigden[] |
+              {
+                "aanvangsdatum": .aanvangsdatum,
+                "type": .type,
+                "persoon": .persoon | {
+                  "omschrijving": .omschrijving,
+                  "type": .type
+                },
+                "tenaamstelling": .tenaamstelling | {
+                  "aandeel": .aandeel,
+                  "isGebaseerdOpStukdeelIdentificaties": .isGebaseerdOpStukdeelIdentificaties,
+                  "stukIdentificaties": .stukIdentificaties,
+                  "betrokkenGorzenEnAanwassen": .betrokkenGorzenEnAanwassen | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                  },
+                  "betrokkenPartner": .betrokkenPartner | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                  },
+                  "betrokkenSamenwerkingsverband": .betrokkenSamenwerkingsverband | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                  },
+                  "burgerlijkeStaatTenTijdeVanVerkrijging": .burgerlijkeStaatTenTijdeVanVerkrijging | {
+                    "code": .code,
+                    "waarde": .waarde
+                  }
+                },
+              }
+          ]
+        }
+      }
+  - path: /api/brk/v1/publiekrechtelijkebeperkingen
+    backend:
+      slug: haal-centraal-brk
+      path: /publiekrechtelijkebeperkingen
+    responseRewrite: |
+      {
+        "_embedded": {
+          "publiekrechtelijkeBeperkingen": [
+            ._embedded.publiekrechtelijkeBeperkingen[] |
+              {
+                "identificatie": .identificatie,
+                "domein": .domein,
+                "grondslag": .grondslag,
+                "datumInWerking": .datumInWerking,
+                "datumBeeindiging": .datumBeeindiging,
+                "bevoegdGezag": .bevoegdGezag | {
+                    "omschrijving": .omschrijving,
+                    "type": .type
+                },
+                "stukIdentificaties": .stukIdentificaties,
+                "isGebaseerdOpStukdeelIdentificatie": .isGebaseerdOpStukdeelIdentificatie
+              }
+          ]
+        }
+      }
+  - path: /api/kvk/v1/zoeken
     backend:
       slug: kvk
       path: /zoeken
@@ -31,9 +144,26 @@ backends:
   geoserver:
     type: OWS
     baseUrl: http://localhost:8080/geoserver
-  kvk:
+  geoserver-wmts:
+    type: WMTS
+    baseUrl: http://localhost/geoserver
+  haal-centraal-brp:
     type: REST
-    baseUrl: https://api.kvk.nl/test/api/v2
+    baseUrl: http://localhost:8051/api/brp/v1
     auth:
       header:
-        apikey: l7xx1f2691f2520d487b902f4e0b57a0b197
+        X-Api-Key: ${BRP_API_KEY}
+  haal-centraal-brk:
+    type: REST
+    baseUrl: https://api.brk.kadaster.nl/esd-eto-apikey/bevragen/v1
+    auth:
+      header:
+        X-Api-Key: ${BRK_API_KEY}
+  kvk:
+    type: REST
+    baseUrl: https://api.kvk.nl/test/api/v1
+    auth:
+      tls:
+        rootCertificates: .vscode/pki-o-g1.crt
+      header:
+        apikey: ${KVK_API_KEY}

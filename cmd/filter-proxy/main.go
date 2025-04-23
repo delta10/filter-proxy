@@ -395,7 +395,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		requestParam := queryParams.Get("request")
 		serviceParam := queryParams.Get("service")
 
-		if len(body) > 0 && requestParam != "" {
+		if len(body) > 0 && len(queryParams) > 0 {
 			log.Printf("Invalid: both XML and query param are set")
 			return http.StatusBadRequest, nil, false
 		}
