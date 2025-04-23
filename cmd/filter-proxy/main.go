@@ -409,7 +409,12 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 			return http.StatusBadRequest, nil, false
 		}
 
-		authorizationBody["service"] = serviceParam
+		if transactionSet {
+			authorizationBody["service"] = "WFS"
+		} else {
+			authorizationBody["service"] = serviceParam
+		}
+
 		authorizationBody["request"] = requestParam
 
 		if authorizationBody["service"] == "WMS" {
@@ -420,22 +425,26 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 				"cql_filter": queryParams.Get("cql_filter"),
 			}
 		} else if authorizationBody["service"] == "WFS" {
-			authorizationBody["resource"] = queryParams.Get("typename") + queryParams.Get("typenames")
-			authorizationBody["params"] = map[string]interface{}{
-				"service":    serviceParam,
-				"request":    requestParam,
-				"cql_filter": queryParams.Get("cql_filter"),
-			}
-		} else if transactionSet {
-			layerName, transactionCount := utils.GetTransactionMetadata(transaction)
+			if transactionSet {
+				layerName, transactionCount := utils.GetTransactionMetadata(transaction)
 
-			if transactionCount > 1 {
-				log.Printf("we only allow one wfs transaction at a time")
-				return http.StatusBadRequest, nil, false
-			}
+				log.Printf("%+v", "laagnaam"+layerName)
 
-			authorizationBody["resource"] = layerName
-			authorizationBody["request"] = "Transaction"
+				if transactionCount > 1 {
+					log.Printf("we only allow one wfs transaction at a time")
+					return http.StatusBadRequest, nil, false
+				}
+
+				authorizationBody["resource"] = layerName
+				authorizationBody["request"] = "Transaction"
+			} else {
+				authorizationBody["resource"] = queryParams.Get("typename") + queryParams.Get("typenames")
+				authorizationBody["params"] = map[string]interface{}{
+					"service":    serviceParam,
+					"request":    requestParam,
+					"cql_filter": queryParams.Get("cql_filter"),
+				}
+			}
 		} else {
 			log.Printf("unauthorized service type: %s", authorizationBody["service"])
 			return http.StatusUnauthorized, nil, false
