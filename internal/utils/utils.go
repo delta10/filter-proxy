@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/base64"
+	"github.com/delta10/filter-proxy/internal/wfs"
 	"net"
 	"net/http"
 	"net/url"
@@ -102,4 +103,23 @@ func StringInSlice(a string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func GetTransactionMetadata(t wfs.Transaction) (string, int) {
+	var (
+		lastLayerName string
+		count         int
+	)
+
+	if inserts := t.Inserts; len(inserts) == 1 {
+		lastLayerName, count = inserts[0].Layers[0].XMLName.Space+":"+inserts[0].Layers[0].XMLName.Local, count+1
+	}
+	if updates := t.Updates; len(updates) == 1 {
+		lastLayerName, count = updates[0].TypeName, count+1
+	}
+	if deletes := t.Deletes; len(deletes) == 1 {
+		lastLayerName, count = deletes[0].TypeName, count+1
+	}
+
+	return lastLayerName, count
 }

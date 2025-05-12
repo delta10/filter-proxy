@@ -4,21 +4,34 @@ listenAddress: localhost:8050
 #   certificate: tls.pem
 #   key: tls-key.pem
 
-authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize
+authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize/
 
 cors:
-  # allowedOrigins: ["http://www.test.nl"]
-  # allowedMethods: ["GET"]
-  # allowedHeaders: []
-  # allowCredentials: true
-  # allowPrivateNetwork: true
-  # debugLogging: false
+# allowedOrigins: ["http://www.test.nl"]
+# allowedMethods: ["GET"]
+# allowedHeaders: []
+# allowCredentials: true
+# allowPrivateNetwork: true
+# debugLogging: false
+  allowedOrigins:
+  - http://localhost:8000
+  allowedHeaders:
+    - Accept
+    - Authorization
+    - Content-Type
+    - X-Requested-With
+  allowCredentials: true
+  allowPrivateNetwork: true
+  debugLogging: true
 
 paths:
   - path: /api/ows
     backend:
       slug: geoserver
       path: /ows
+    allowedMethods:
+      - GET
+      - POST
   - path: /geoserver/
     passthrough: true
     backend:
@@ -130,7 +143,7 @@ paths:
 backends:
   geoserver:
     type: OWS
-    baseUrl: http://localhost/geoserver
+    baseUrl: http://localhost:8080/geoserver
   geoserver-wmts:
     type: WMTS
     baseUrl: http://localhost/geoserver
