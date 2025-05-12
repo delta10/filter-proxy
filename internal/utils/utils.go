@@ -112,7 +112,7 @@ func GetTransactionMetadata(t wfs.Transaction) (string, int) {
 	)
 
 	if inserts := t.Inserts; len(inserts) == 1 {
-		lastLayerName, count = inserts[0].Layers[0].XMLName.Local, count+1
+		lastLayerName, count = inserts[0].Layers[0].XMLName.Space+":"+inserts[0].Layers[0].XMLName.Local, count+1
 	}
 	if updates := t.Updates; len(updates) == 1 {
 		lastLayerName, count = updates[0].TypeName, count+1
