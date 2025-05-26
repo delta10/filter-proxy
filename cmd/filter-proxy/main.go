@@ -428,8 +428,6 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 			if transactionSet {
 				layerName, transactionCount := utils.GetTransactionMetadata(transaction)
 
-				log.Printf("%+v", "laagnaam"+layerName)
-
 				if transactionCount > 1 {
 					log.Printf("we only allow one wfs transaction at a time")
 					return http.StatusBadRequest, nil, false
