@@ -396,7 +396,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		serviceParam := queryParams.Get("service")
 
 		if len(body) > 0 && len(queryParams) > 0 {
-			log.Printf("Invalid: both XML and query param are set")
+			log.Printf("Invalid request: cannot have both XML body and query parameters")
 			return http.StatusBadRequest, nil, false
 		}
 
@@ -405,7 +405,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		isTransactionSet = transactionSet
 
 		if len(body) > 0 && err != nil {
-			log.Printf("Body present but could not unmarshal into WFS.Transaction: %v", err)
+			log.Printf("Invalid XML in request body: %v", err)
 			return http.StatusBadRequest, nil, false
 		}
 
