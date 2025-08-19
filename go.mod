@@ -5,7 +5,7 @@ go 1.24
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/gorilla/mux v1.8.1
-	github.com/itchyny/gojq v0.12.16
+	github.com/itchyny/gojq v0.12.17
 	github.com/rs/cors v1.11.1
 	gopkg.in/yaml.v2 v2.4.0
 )
