@@ -1,6 +1,6 @@
 module github.com/delta10/filter-proxy
 
-go 1.19
+go 1.24
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
