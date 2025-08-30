@@ -2,13 +2,14 @@ package utils
 
 import (
 	"encoding/base64"
-	"github.com/delta10/filter-proxy/internal/wfs"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/delta10/filter-proxy/internal/wfs"
 )
 
 func QueryParamsToLower(queryParams url.Values) url.Values {
@@ -70,19 +71,22 @@ func DelHopHeaders(header http.Header) {
 	}
 }
 
-func EnvSubst(input string) string {
+func EnvSubst(input string, additionalReplacements map[string]string) string {
 	re := regexp.MustCompile(`\${([^}]+)}`)
 
-	result := re.ReplaceAllStringFunc(input, func(match string) string {
+	return re.ReplaceAllStringFunc(input, func(match string) string {
 		varName := match[2 : len(match)-1]
+		if additionalReplacements != nil {
+			if value, exists := additionalReplacements[varName]; exists {
+				return value
+			}
+		}
 		if value, exists := os.LookupEnv(varName); exists {
 			return value
 		}
-
-		return ""
+		// Leave the original pattern if no replacement found
+		return match
 	})
-
-	return result
 }
 
 func ReadUserIP(r *http.Request) string {

@@ -33,6 +33,7 @@ type ClaimsWithGroups struct {
 type AuthorizationResponse struct {
 	Result         bool   `json:"result"`
 	ResponseFilter string `json:"response_filter"`
+	Username       string `json:"username"`
 }
 
 func main() {
@@ -69,7 +70,7 @@ func main() {
 				r.URL.Scheme = backendBaseUrl.Scheme
 
 				for headerKey, headerValue := range backend.Auth.Header {
-					parsedHeaderValue := utils.EnvSubst(headerValue)
+					parsedHeaderValue := utils.EnvSubst(headerValue, nil)
 					r.Header.Set(headerKey, parsedHeaderValue)
 				}
 
@@ -246,12 +247,14 @@ func main() {
 				transport := &http.Transport{TLSClientConfig: tlsConfig}
 
 				if backend.Auth.Basic.Username != "" && backend.Auth.Basic.Password != "" {
-					parsedPassword := utils.EnvSubst(backend.Auth.Basic.Password)
+					parsedPassword := utils.EnvSubst(backend.Auth.Basic.Password, nil)
 					backendRequest.SetBasicAuth(backend.Auth.Basic.Username, parsedPassword)
 				}
 
 				for headerKey, headerValue := range backend.Auth.Header {
-					parsedHeaderValue := utils.EnvSubst(headerValue)
+					parsedHeaderValue := utils.EnvSubst(headerValue, map[string]string{
+						"REQUEST_USERNAME": authorizationResponse.Username,
+					})
 					backendRequest.Header.Set(headerKey, parsedHeaderValue)
 				}
 
