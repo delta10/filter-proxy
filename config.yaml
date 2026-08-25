@@ -7,14 +7,14 @@ listenAddress: localhost:8050
 authorizationServiceUrl: http://localhost:8000/atlas/api/v1/authorize/
 
 cors:
-# allowedOrigins: ["http://www.test.nl"]
-# allowedMethods: ["GET"]
-# allowedHeaders: []
-# allowCredentials: true
-# allowPrivateNetwork: true
-# debugLogging: false
+  # allowedOrigins: ["http://www.test.nl"]
+  # allowedMethods: ["GET"]
+  # allowedHeaders: []
+  # allowCredentials: true
+  # allowPrivateNetwork: true
+  # debugLogging: false
   allowedOrigins:
-  - http://localhost:8000
+    - http://localhost:8000
   allowedHeaders:
     - Accept
     - Authorization
@@ -41,6 +41,13 @@ paths:
     backend:
       slug: geoserver-wmts
       path: /gwc/service/wmts
+  - path: /ogc/maps/v1/collections/{collectionId}
+    backend:
+      slug: geoserver-ogc
+      path: /ogc/maps/v1/collections/{collectionId}
+      source: geoserver
+    allowedMethods:
+      - GET
   - path: /api/brp/v1/personen
     allowedMethods:
       - GET
@@ -143,6 +150,9 @@ paths:
 backends:
   geoserver:
     type: OWS
+    baseUrl: http://localhost:8080/geoserver
+  geoserver-ogc:
+    type: OGC
     baseUrl: http://localhost:8080/geoserver
   geoserver-wmts:
     type: WMTS

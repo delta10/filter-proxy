@@ -383,8 +383,14 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		return http.StatusBadRequest, nil, false
 	}
 
+	// If the backend source is specified, use that for authorization, otherwise use the backend slug
+	authorizationSource := path.Backend.Slug
+	if path.Backend.Source != "" {
+		authorizationSource = path.Backend.Source
+	}
+
 	authorizationBody := map[string]interface{}{
-		"source":     path.Backend.Slug,
+		"source":     authorizationSource,
 		"user_agent": r.Header.Get("User-Agent"),
 		"ip":         utils.ReadUserIP(r),
 	}
@@ -459,6 +465,23 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 			"service": queryParams.Get("service"),
 			"request": queryParams.Get("request"),
 		}
+	} else if backend.Type == "OGC" {
+		vars := mux.Vars(r)
+		collectionID := vars["collectionId"]
+		if collectionID == "" {
+			log.Printf("missing OGC collectionId route variable")
+			return http.StatusBadRequest, nil, false
+		}
+
+		params := make(map[string]interface{})
+		for k, v := range r.URL.Query() {
+			params[k] = v
+		}
+
+		authorizationBody["service"] = "OGC"
+		authorizationBody["request"] = "GetCollection"
+		authorizationBody["resource"] = collectionID
+		authorizationBody["params"] = params
 	} else if backend.Type == "REST" {
 		authorizationBody["resource"] = path.Backend.Path
 
@@ -480,6 +503,10 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		return http.StatusInternalServerError, nil, false
 	}
 
+	return authorizeWithBody(config, r, authorizationBody, isTransactionSet)
+}
+
+func authorizeWithBody(config *config.Config, r *http.Request, authorizationBody map[string]interface{}, isTransactionSet bool) (int, *AuthorizationResponse, bool) {
 	marshalledAuthorizationBody, err := json.Marshal(authorizationBody)
 	if err != nil {
 		log.Print("could not marshall authorization body")
@@ -542,8 +569,8 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
 		log.Fatalf("Error happened in JSON marshal. Err: %s", err)
 	}
 
-	w.WriteHeader(statusCode)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 	w.Write(jsonResp)
 }
 
