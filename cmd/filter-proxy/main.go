@@ -397,15 +397,9 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		collectionID := mux.Vars(r)["collectionId"]
 
 		if collectionID != "" {
-			params := make(map[string]interface{})
-			for k, v := range r.URL.Query() {
-				params[k] = v
-			}
-
 			authorizationBody["service"] = "OGC"
 			authorizationBody["request"] = "GetCollection"
 			authorizationBody["resource"] = collectionID
-			authorizationBody["params"] = params
 
 			return authorizeWithBody(config, r, authorizationBody, isTransactionSet)
 		}
