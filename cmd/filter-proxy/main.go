@@ -383,11 +383,7 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		return http.StatusBadRequest, nil, false
 	}
 
-	// If the backend source is specified, use that for authorization, otherwise use the backend slug
 	authorizationSource := path.Backend.Slug
-	if path.Backend.Source != "" {
-		authorizationSource = path.Backend.Source
-	}
 
 	authorizationBody := map[string]interface{}{
 		"source":     authorizationSource,
@@ -398,6 +394,22 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 	isTransactionSet := false
 
 	if backend.Type == "OWS" {
+		collectionID := mux.Vars(r)["collectionId"]
+
+		if collectionID != "" {
+			params := make(map[string]interface{})
+			for k, v := range r.URL.Query() {
+				params[k] = v
+			}
+
+			authorizationBody["service"] = "OGC"
+			authorizationBody["request"] = "GetCollection"
+			authorizationBody["resource"] = collectionID
+			authorizationBody["params"] = params
+
+			return authorizeWithBody(config, r, authorizationBody, isTransactionSet)
+		}
+
 		queryParams := utils.QueryParamsToLower(r.URL.Query())
 		var transaction wfs.Transaction
 
@@ -465,23 +477,6 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 			"service": queryParams.Get("service"),
 			"request": queryParams.Get("request"),
 		}
-	} else if backend.Type == "OGC" {
-		vars := mux.Vars(r)
-		collectionID := vars["collectionId"]
-		if collectionID == "" {
-			log.Printf("missing OGC collectionId route variable")
-			return http.StatusBadRequest, nil, false
-		}
-
-		params := make(map[string]interface{})
-		for k, v := range r.URL.Query() {
-			params[k] = v
-		}
-
-		authorizationBody["service"] = "OGC"
-		authorizationBody["request"] = "GetCollection"
-		authorizationBody["resource"] = collectionID
-		authorizationBody["params"] = params
 	} else if backend.Type == "REST" {
 		authorizationBody["resource"] = path.Backend.Path
 

@@ -41,11 +41,10 @@ paths:
     backend:
       slug: geoserver-wmts
       path: /gwc/service/wmts
-  - path: /ogc/maps/v1/collections/{collectionId}
+  - path: /api/ogc/maps/v1/collections/{collectionId}
     backend:
-      slug: geoserver-ogc
+      slug: geoserver
       path: /ogc/maps/v1/collections/{collectionId}
-      source: geoserver
     allowedMethods:
       - GET
   - path: /api/brp/v1/personen
@@ -150,9 +149,6 @@ paths:
 backends:
   geoserver:
     type: OWS
-    baseUrl: http://localhost:8080/geoserver
-  geoserver-ogc:
-    type: OGC
     baseUrl: http://localhost:8080/geoserver
   geoserver-wmts:
     type: WMTS
