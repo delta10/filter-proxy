@@ -29,9 +29,8 @@ type Path struct {
 	AllowedMethods []string `yaml:"allowedMethods"`
 	Passthrough    bool     `yaml:"passthrough"`
 	Backend        struct {
-		Slug   string `yaml:"slug"`
-		Path   string `yaml:"path"`
-		Source string `yaml:"source"`
+		Slug string `yaml:"slug"`
+		Path string `yaml:"path"`
 	} `yaml:"backend"`
 	RequestRewrite  string `yaml:"requestRewrite"`
 	ResponseRewrite string `yaml:"responseRewrite"`

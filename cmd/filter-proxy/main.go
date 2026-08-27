@@ -396,6 +396,8 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 	if backend.Type == "OWS" {
 		collectionID := mux.Vars(r)["collectionId"]
 
+		// If collectionID is set, this is an OGC API request for a specific collection (layer metadata),
+		// so authorize directly based on the collection ID (layer name).
 		if collectionID != "" {
 			authorizationBody["service"] = "OGC"
 			authorizationBody["request"] = "GetCollection"
