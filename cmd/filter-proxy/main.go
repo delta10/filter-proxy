@@ -383,8 +383,10 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		return http.StatusBadRequest, nil, false
 	}
 
+	authorizationSource := path.Backend.Slug
+
 	authorizationBody := map[string]interface{}{
-		"source":     path.Backend.Slug,
+		"source":     authorizationSource,
 		"user_agent": r.Header.Get("User-Agent"),
 		"ip":         utils.ReadUserIP(r),
 	}
@@ -392,6 +394,18 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 	isTransactionSet := false
 
 	if backend.Type == "OWS" {
+		collectionID := mux.Vars(r)["collectionId"]
+
+		// If collectionID is set, this is an OGC API request for a specific collection (layer metadata),
+		// so authorize directly based on the collection ID (layer name).
+		if collectionID != "" {
+			authorizationBody["service"] = "OGC"
+			authorizationBody["request"] = "GetCollection"
+			authorizationBody["resource"] = collectionID
+
+			return authorizeWithBody(config, r, authorizationBody, isTransactionSet)
+		}
+
 		queryParams := utils.QueryParamsToLower(r.URL.Query())
 		var transaction wfs.Transaction
 
@@ -480,6 +494,10 @@ func authorizeRequestWithService(config *config.Config, backend config.Backend, 
 		return http.StatusInternalServerError, nil, false
 	}
 
+	return authorizeWithBody(config, r, authorizationBody, isTransactionSet)
+}
+
+func authorizeWithBody(config *config.Config, r *http.Request, authorizationBody map[string]interface{}, isTransactionSet bool) (int, *AuthorizationResponse, bool) {
 	marshalledAuthorizationBody, err := json.Marshal(authorizationBody)
 	if err != nil {
 		log.Print("could not marshall authorization body")
@@ -542,8 +560,8 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
 		log.Fatalf("Error happened in JSON marshal. Err: %s", err)
 	}
 
-	w.WriteHeader(statusCode)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 	w.Write(jsonResp)
 }
 
